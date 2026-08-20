@@ -1,1 +1,2457 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Hệ Thống Thi Trắc Nghiệm</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            DEFAULT: '#B0202E', 
+                            hover: '#8C1924',
+                            light: '#F8E8E9'
+                        },
+                        gray: {
+                            bg: '#F3F4F6',
+                            button: '#E5E7EB',
+                            buttonHover: '#D1D5DB'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #F8F9FA;
+            color: #333;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .question-grid-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        .question-grid-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        .question-grid-container::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        .custom-radio input[type="radio"] {
+            display: none;
+        }
+        
+        .custom-radio .radio-mark {
+            width: 20px;
+            height: 20px;
+            border: 1px solid #d1d5db;
+            border-radius: 50%;
+            display: inline-block;
+            position: relative;
+            margin-right: 12px;
+            flex-shrink: 0;
+            background-color: white;
+            transition: all 0.2s;
+        }
+        
+        .custom-radio input[type="radio"]:checked + .radio-mark::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #4F46E5;
+        }
+
+        .custom-radio input[type="radio"]:checked + .radio-mark {
+            border-color: #4F46E5;
+        }
+
+        .option-label {
+            transition: all 0.2s;
+        }
+        @media (hover: hover) {
+            .option-label:hover {
+                background-color: #F9FAFB;
+            }
+        }
+        
+        .option-label.selected {
+            border-color: #4F46E5;
+            background-color: #EEF2FF;
+        }
+
+        .grid-btn {
+            width: 100%;
+            aspect-ratio: 1;
+            max-width: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #E5E7EB;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            background-color: white;
+            color: #374151;
+            margin: auto;
+        }
+        
+        @media (hover: hover) {
+            .grid-btn:hover {
+                background-color: #F3F4F6;
+            }
+        }
+
+        .grid-btn.current {
+            border: 2px solid #B0202E;
+            font-weight: bold;
+        }
+        .grid-btn.answered {
+            background-color: #3B82F6;
+            color: white;
+            border-color: #3B82F6;
+        }
+        .grid-btn.marked {
+            background-color: #F59E0B;
+            color: white;
+            border-color: #F59E0B;
+        }
+        .grid-btn.answered.marked {
+             background: linear-gradient(135deg, #3B82F6 50%, #F59E0B 50%);
+             color: white;
+             border-color: #374151;
+        }
+
+        #firebaseLoading {
+            position: fixed;
+            inset: 0;
+            background: rgba(255,255,255,0.8);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border-left-color: #B0202E;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="h-[100dvh] w-screen overflow-hidden flex flex-col font-sans bg-[#F8F9FA]">
+
+    <!-- Overlay Loading DB -->
+    <div id="firebaseLoading">
+        <div class="spinner mb-3"></div>
+        <p class="text-gray-600 font-medium" id="loadingText">Đang tải cấu hình...</p>
+    </div>
+
+    <!-- MÀN HÌNH ĐĂNG NHẬP -->
+    <div id="loginScreen" class="flex-1 flex items-center justify-center p-4 transition-all duration-300">
+        <div class="bg-white p-6 sm:p-8 rounded-xl shadow-lg w-full max-w-md mx-auto relative overflow-hidden">
+            
+            <!-- Khu vực đăng nhập Thí sinh -->
+            <div id="studentLoginSection" class="transition-all duration-300 transform translate-x-0 w-full">
+                <div class="text-center mb-8">
+                    <h1 class="text-2xl font-bold text-gray-800 mb-2">HỆ THỐNG THI TRẮC NGHIỆM</h1>
+                    <p class="text-gray-500 text-sm">Vui lòng điền thông tin để bắt đầu</p>
+                </div>
+                
+                <form id="loginForm" class="space-y-4">
+                    <div>
+                        <label for="fullName" class="block text-sm font-medium text-gray-700 mb-1">Họ và Tên</label>
+                        <input type="text" id="fullName" required class="w-full px-4 py-2 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none transition" placeholder="Nhập họ và tên...">
+                    </div>
+                    <div>
+                        <label for="empId" class="block text-sm font-medium text-gray-700 mb-1">Mã CN/Phòng ban</label>
+                        <input type="text" id="empId" required class="w-full px-4 py-2 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none transition" placeholder="Nhập mã...">
+                    </div>
+                    
+                    <div class="pt-4 border-t border-gray-100 mt-6">
+                        <div class="flex justify-between text-sm text-gray-600 mb-4">
+                            <span>Số lượng: <strong id="questionCountDisplay">200 câu</strong></span>
+                            <span>Thời gian: <strong>60 phút</strong></span>
+                        </div>
+                        <button type="submit" id="btnStartExam" class="w-full bg-brand hover:bg-brand-hover disabled:bg-gray-400 text-white font-bold py-3 px-4 rounded-lg transition shadow-md flex justify-center items-center">
+                            BẮT ĐẦU THI
+                        </button>
+                    </div>
+                </form>
+                <div class="mt-5 text-center">
+                    <button id="btnShowAdminLogin" type="button" class="text-sm text-gray-500 hover:text-brand transition underline-offset-2 hover:underline focus:outline-none">Bạn là Quản trị viên?</button>
+                </div>
+            </div>
+
+            <!-- Khu vực đăng nhập Admin -->
+            <div id="adminLoginSection" class="hidden transition-all duration-300 transform translate-x-full absolute inset-0 p-6 sm:p-8 bg-white z-10 flex flex-col justify-center">
+                <div class="text-center mb-8">
+                    <div class="inline-flex items-center justify-center w-12 h-12 bg-gray-100 text-gray-800 rounded-full mb-3">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8V7z"></path></svg>
+                    </div>
+                    <h1 class="text-2xl font-bold text-gray-800 mb-2">QUẢN TRỊ VIÊN</h1>
+                    <p class="text-gray-500 text-sm">Đăng nhập để xem kết quả thi</p>
+                </div>
+                
+                <form id="adminForm" class="space-y-4">
+                    <div>
+                        <label for="adminUsername" class="block text-sm font-medium text-gray-700 mb-1">Tài khoản</label>
+                        <input type="text" id="adminUsername" required class="w-full px-4 py-2 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-800 focus:border-gray-800 outline-none transition" placeholder="Tên đăng nhập...">
+                    </div>
+                    <div>
+                        <label for="adminPassword" class="block text-sm font-medium text-gray-700 mb-1">Mật khẩu</label>
+                        <input type="password" id="adminPassword" required class="w-full px-4 py-2 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-800 focus:border-gray-800 outline-none transition" placeholder="Mật khẩu...">
+                    </div>
+                    
+                    <div class="pt-4 mt-2">
+                        <button type="submit" class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 px-4 rounded-lg transition shadow-md flex justify-center items-center">
+                            ĐĂNG NHẬP
+                        </button>
+                    </div>
+                </form>
+                <div class="mt-5 text-center">
+                    <button id="btnShowStudentLogin" type="button" class="text-sm text-gray-500 hover:text-gray-800 transition underline-offset-2 hover:underline focus:outline-none">&larr; Quay lại trang Thí sinh</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- MÀN HÌNH ADMIN QUẢN TRỊ -->
+    <div id="adminScreen" class="hidden flex-1 overflow-hidden flex flex-col p-4 sm:p-8 bg-gray-50">
+        <div class="max-w-6xl mx-auto w-full flex-1 flex flex-col bg-white rounded-xl shadow-lg overflow-hidden">
+            <div class="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-800 text-white">
+                <h2 class="text-xl font-bold">Khu Vực Quản Trị - Kết Quả Thi</h2>
+                <button id="btnExitAdmin" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition">Đóng Admin</button>
+            </div>
+            
+            <div class="p-4 bg-yellow-50 border-b border-yellow-200 text-sm text-yellow-800 leading-relaxed">
+                <strong class="text-yellow-900">🔔 LƯU Ý QUAN TRỌNG:</strong> Bảng bên dưới chỉ hiển thị kết quả của những người đã thi trên <b>chính chiếc máy tính/điện thoại này</b> (lưu bằng Local Storage).<br>
+                👉 Để xem kết quả thi của <b>TẤT CẢ MỌI NGƯỜI từ các thiết bị khác nhau</b>, vui lòng mở file <b>Google Sheet (Excel)</b> trên Google Drive của bạn!
+            </div>
+            
+            <div class="p-4 bg-white border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div class="bg-blue-50 p-3 rounded-lg border border-blue-100 w-full sm:w-auto">
+                    <h3 class="font-bold text-blue-800 mb-1">Cập nhật Bộ Câu Hỏi (Excel)</h3>
+                    <p class="text-[11px] sm:text-xs text-blue-600 mb-2">Định dạng 6 cột: Câu hỏi | A | B | C | D | Đáp án (A/B/C/D)</p>
+                    <input type="file" id="excelFileInput" accept=".xlsx, .xls" class="hidden">
+                    <div class="flex items-center gap-2">
+                        <button id="btnUploadExcel" class="px-3 py-1.5 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 flex items-center gap-1 shadow-sm transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                            Tải file Excel lên
+                        </button>
+                        <span id="uploadStatus" class="text-xs font-medium text-blue-800"></span>
+                    </div>
+                </div>
+                
+                <div class="flex flex-col items-end gap-2 w-full sm:w-auto">
+                    <p class="text-sm text-gray-600">Tổng số bài nộp: <span id="adminTotalSubmissions" class="font-bold text-gray-900">0</span></p>
+                    <button id="btnRefreshAdmin" class="px-3 py-1.5 bg-white border border-gray-300 rounded-md text-sm hover:bg-gray-50 flex items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        Làm mới kết quả
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-auto">
+                <table class="w-full text-left border-collapse min-w-[700px]">
+                    <thead>
+                        <tr class="bg-gray-100 text-gray-600 uppercase text-xs tracking-wider">
+                            <th class="p-4 border-b font-semibold">Thời gian nộp</th>
+                            <th class="p-4 border-b font-semibold">Họ và Tên</th>
+                            <th class="p-4 border-b font-semibold">Mã NV</th>
+                            <th class="p-4 border-b font-semibold text-center">Thời gian làm</th>
+                            <th class="p-4 border-b font-semibold text-center">Số câu đúng</th>
+                            <th class="p-4 border-b font-semibold text-center">Điểm số</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminTableBody">
+                        <!-- Data will be injected here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <!-- KẾT THÚC MÀN HÌNH ADMIN -->
+
+    <!-- MÀN HÌNH THI -->
+    <div id="examScreen" class="hidden flex-1 w-full max-w-7xl mx-auto p-0 sm:p-4 flex flex-col md:flex-row gap-0 sm:gap-4 transition-all duration-300 relative min-h-0">
+        
+        <div id="sidebarOverlay" class="hidden fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden transition-opacity"></div>
+
+        <div class="flex-1 bg-white sm:rounded-xl shadow-sm sm:border border-gray-200 flex flex-col h-full overflow-hidden min-h-0 z-10 w-full">
+            <div class="p-3 sm:p-6 pb-2 sm:pb-3 border-b border-gray-100 flex justify-between items-center bg-white shadow-sm sm:shadow-none z-10 shrink-0">
+                <h2 class="text-base sm:text-xl font-bold text-gray-800" id="questionTitle">CÂU 1 / 200</h2>
+                
+                <div class="md:hidden flex items-center gap-2">
+                    <div class="flex items-center gap-1 bg-brand-light px-2.5 py-1.5 rounded-lg border border-red-100">
+                        <svg class="w-4 h-4 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span class="font-bold text-brand font-mono text-sm" id="mobileTimerDisplay">60:00</span>
+                    </div>
+                    <button id="btnOpenSidebar" class="p-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="p-4 sm:p-6 flex-1 overflow-y-auto">
+                <p class="text-gray-800 text-[15px] sm:text-base leading-relaxed mb-5" id="questionContent">Đang tải câu hỏi...</p>
+                <div class="space-y-2.5 sm:space-y-3" id="optionsContainer"></div>
+            </div>
+
+            <div class="p-3 sm:p-5 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row gap-2 sm:gap-3 shrink-0">
+                <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-1 sm:gap-3">
+                     <button id="btnPrev" class="bg-gray-button hover:bg-gray-buttonHover text-gray-800 font-semibold py-2.5 px-2 sm:px-4 rounded-lg transition text-sm sm:text-base w-full">
+                        &larr; <span class="hidden sm:inline">Câu</span> trước
+                    </button>
+                    <button id="btnNext" class="bg-brand hover:bg-brand-hover text-white font-semibold py-2.5 px-2 sm:px-4 rounded-lg transition text-sm sm:text-base shadow-sm w-full">
+                        <span class="hidden sm:inline">Câu</span> sau &rarr;
+                    </button>
+                </div>
+                <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-1 sm:gap-3">
+                     <button id="btnMark" class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-800 font-semibold py-2.5 px-2 sm:px-4 rounded-lg transition text-sm sm:text-base w-full whitespace-nowrap overflow-hidden text-ellipsis">
+                        Đánh dấu
+                    </button>
+                    <button id="btnSubmit" class="bg-gray-800 hover:bg-gray-900 text-white font-bold py-2.5 px-2 sm:px-4 rounded-lg transition text-sm sm:text-base shadow-sm w-full">
+                        NỘP BÀI
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="rightSidebar" class="fixed inset-y-0 right-0 z-50 w-[85%] max-w-[320px] bg-white shadow-2xl transform translate-x-full transition-transform duration-300 md:relative md:translate-x-0 md:w-[300px] lg:w-[350px] md:shadow-sm md:rounded-xl md:border border-gray-200 flex flex-col h-full shrink-0">
+            <div class="flex justify-between items-center p-3 sm:p-4 border-b border-gray-100 md:hidden bg-gray-50 shrink-0">
+                <h3 class="font-bold text-gray-800">Danh sách câu hỏi</h3>
+                <button id="btnCloseSidebar" class="p-1.5 text-gray-500 hover:bg-gray-200 rounded-lg transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+
+            <div class="hidden md:block p-5 text-center border-b border-gray-100 shrink-0">
+                <div class="text-4xl font-extrabold text-gray-900 tracking-wider font-mono" id="timerDisplay">60:00</div>
+            </div>
+            
+            <div class="px-4 py-2.5 border-b border-gray-100 bg-gray-50 flex justify-between items-center text-sm shrink-0">
+                <span class="font-medium text-gray-700 truncate max-w-[60%]" id="displayUserName">Thí sinh</span>
+                <span class="text-gray-500" id="answeredCountInfo">Đã làm: 0/200</span>
+            </div>
+
+            <div class="p-3 sm:p-4 pb-2 shrink-0">
+                <h3 class="font-bold text-gray-800 hidden md:block mb-2">Danh sách câu hỏi</h3>
+                <div class="flex flex-wrap gap-2 text-[11px] sm:text-xs text-gray-600 justify-center">
+                    <div class="flex items-center gap-1"><span class="w-2.5 h-2.5 bg-blue-500 rounded-sm inline-block"></span> Đã làm</div>
+                    <div class="flex items-center gap-1"><span class="w-2.5 h-2.5 bg-yellow-500 rounded-sm inline-block"></span> Đánh dấu</div>
+                    <div class="flex items-center gap-1"><span class="w-2.5 h-2.5 bg-white border border-red-700 rounded-sm inline-block"></span> Đang xem</div>
+                </div>
+            </div>
+
+            <div class="p-3 sm:p-4 pt-1 flex-1 overflow-y-auto question-grid-container">
+                <div class="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-6 lg:grid-cols-8 gap-1.5 sm:gap-2" id="questionGrid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MÀN HÌNH NHẬN KẾT QUẢ -->
+    <div id="resultScreen" class="hidden flex-1 w-full flex items-center justify-center p-4">
+        <div class="bg-white p-6 sm:p-8 rounded-xl shadow-lg w-full max-w-md mx-auto text-center">
+            <div class="w-16 h-16 sm:w-20 sm:h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
+                <svg class="w-8 h-8 sm:w-10 sm:h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+            </div>
+            <h2 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">Đã nộp bài thành công!</h2>
+            <p class="text-gray-600 mb-6 text-sm sm:text-base" id="resultUserInfo">Thí sinh: Nguyễn Văn A</p>
+            
+            <div class="bg-gray-50 rounded-lg p-4 sm:p-6 mb-6">
+                <div class="grid grid-cols-2 gap-4 border-b border-gray-200 pb-4 mb-4">
+                    <div class="text-center p-2 border-r border-gray-200">
+                        <div class="text-xs sm:text-sm text-gray-500 mb-1">Số câu đúng</div>
+                        <div class="text-xl sm:text-2xl font-bold text-blue-600" id="correctCountDisplay">0 / 200</div>
+                    </div>
+                    <div class="text-center p-2">
+                        <div class="text-xs sm:text-sm text-gray-500 mb-1">Điểm số</div>
+                        <div class="text-2xl sm:text-3xl font-extrabold text-brand" id="scoreDisplay">0.0</div>
+                        <div class="text-[10px] sm:text-xs text-gray-400 mt-1">/ 10 điểm</div>
+                    </div>
+                </div>
+                <div class="text-center">
+                     <div class="text-xs sm:text-sm text-gray-500 mb-1">Thời gian hoàn thành</div>
+                     <div class="text-lg font-semibold text-gray-800" id="timeTakenDisplay">0 phút 0 giây</div>
+                </div>
+            </div>
+            
+            <div class="flex flex-col gap-3 justify-center">
+                <p class="text-xs text-gray-500 italic mb-2">Kết quả của bạn đã được lưu lên hệ thống.</p>
+                <button id="btnReviewExam" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-lg transition flex items-center justify-center gap-2 shadow-sm">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                    Xem lại bài làm
+                </button>
+                <button id="btnExportResult" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 px-6 rounded-lg transition flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    Tải File Chi Tiết (CSV)
+                </button>
+                <button onclick="location.reload()" class="bg-gray-800 hover:bg-gray-900 text-white font-semibold py-2.5 px-6 rounded-lg transition">
+                    Về màn hình chính
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MÀN HÌNH XEM LẠI BÀI LÀM -->
+    <div id="reviewScreen" class="hidden flex-1 w-full max-w-5xl mx-auto p-2 sm:p-4 flex flex-col h-full overflow-hidden">
+        <div class="bg-white p-4 sm:p-5 rounded-t-xl shadow-sm border-b border-gray-200 flex justify-between items-center shrink-0">
+            <h2 class="text-lg sm:text-xl font-bold text-gray-800 flex items-center gap-2">
+                <svg class="w-6 h-6 text-blue-600 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+                XEM LẠI BÀI LÀM
+            </h2>
+            <button id="btnCloseReview" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm font-medium transition text-gray-800">Quay lại kết quả</button>
+        </div>
+        <div class="bg-white p-4 sm:p-6 rounded-b-xl shadow-sm flex-1 overflow-y-auto space-y-4 sm:space-y-6" id="reviewContainer">
+            <!-- Dữ liệu review sẽ được tạo bằng JS -->
+        </div>
+    </div>
+
+    <!-- MODAL XÁC NHẬN NỘP BÀI -->
+    <div id="confirmModal" class="hidden fixed inset-0 bg-black bg-opacity-60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-xl p-5 sm:p-6 max-w-sm w-full shadow-2xl transform transition-all">
+            <h3 class="text-lg font-bold text-gray-900 mb-2">Xác nhận nộp bài</h3>
+            <p class="text-gray-600 text-sm mb-6 leading-relaxed" id="confirmMsg">Bạn chưa hoàn thành tất cả câu hỏi. Bạn có chắc chắn muốn nộp bài?</p>
+            <div class="flex flex-col-reverse sm:flex-row justify-end gap-2.5">
+                <button id="btnCancelSubmit" class="w-full sm:w-auto px-5 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition">Xem lại</button>
+                <button id="btnConfirmSubmit" class="w-full sm:w-auto px-5 py-2.5 bg-brand text-white rounded-lg hover:bg-brand-hover font-medium shadow-sm transition flex justify-center items-center gap-2">
+                    <span id="submitSpinner" class="hidden w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    Nộp bài ngay
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MÃ JAVASCRIPT -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, getDocs, doc, getDoc, setDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // === CẤU HÌNH LƯU KẾT QUẢ QUA GOOGLE FORM ===
+        // Để sử dụng tính năng này, hãy làm theo hướng dẫn trong cửa sổ chat
+        const GOOGLE_FORM_CONFIG = {
+            enabled: true, // ĐỔI CHỮ false THÀNH true Ở ĐÂY
+            formUrl: "https://docs.google.com/forms/d/e/1FAIpQLSfcdscLJC-VRjqMdDE9Vacrk_8pMjeR6hE2wf5mQoGZawrh_g/formResponse", 
+            entries: {
+                userName: "entry.1068873649", // Hãy chắc chắn các ID này là của form của bạn
+                empId: "entry.551471322",    
+                score: "entry.395024258",    
+                correctCount: "entry.57043820", 
+                timeTaken: "entry.324803402" 
+            }
+        };
+        // ===========================================
+
+        // === 🚀 TỰ ĐỘNG PHÂN TÍCH BỘ 200 CÂU HỎI MỚI (NÂNG CAO ĐỀ 09) 🚀 ===
+        const RAW_TEXT = `Câu 1: Khách hàng A (16 tuổi, có tài khoản thanh toán mở bằng tài sản riêng) đến quầy yêu cầu đăng ký Agribank Plus và dịch vụ e-Commerce. Kiểm tra hệ thống ghi nhận khách hàng chưa có người đại diện theo pháp luật đi cùng. Bằng nghiệp vụ, giao dịch viên xử lý thế nào là đúng Quy định 641?
+A. Từ chối toàn bộ vì quy định bắt buộc người dưới 18 tuổi phải có người đại diện theo pháp luật làm thủ tục.
+B. Đồng ý đăng ký Agribank Plus và e-Commerce nếu khách hàng cam kết bằng văn bản tự chịu trách nhiệm về giao dịch.
+C. Chấp nhận đăng ký Agribank Plus nhưng từ chối e-Commerce cho đến khi khách hàng đủ 18 tuổi hoặc có sự đồng ý bằng văn bản của người đại diện.
+D. Đăng ký đầy đủ cả 2 dịch vụ do pháp luật cho phép người từ đủ 15 đến dưới 18 tuổi tự quản lý tài khoản thanh toán và các dịch vụ đi kèm.
+Đáp án đúng: C
+Câu 2: Khi thực hiện trích nợ tự động thu phí duy trì dịch vụ Agribank Plus định kỳ, nếu tài khoản thanh toán mặc định của khách hàng không đủ số dư, hệ thống Agribank sẽ vận hành cơ chế xử lý nào sau đây?
+A. Tự động ngưng cung cấp dịch vụ ngay lập tức và chuyển toàn bộ hồ sơ khách hàng sang trạng thái chờ hủy.
+B. Tự động cấn trừ vào số dư tài khoản tiền gửi tiết kiệm trực tuyến có kỳ hạn ngắn nhất của khách hàng.
+C. Hệ thống quét và tự động trích nợ trên các tài khoản thanh toán khác của khách hàng hoặc tiếp tục truy thu ngay khi tài khoản mặc định có số dư.
+D. Gửi SMS thông báo nợ phí và tự động tính lãi phạt chậm trả theo lãi suất quá hạn do Trụ sở chính quy định.
+Đáp án đúng: C
+Câu 3: Khách hàng đăng ký liên kết tài khoản Agribank với Ví điện tử của Trung gian thanh toán B. Hệ thống báo lỗi "Thông tin không trùng khớp". Kiểm tra cho thấy Tên và Số CCCD trùng khớp nhưng Số điện thoại đăng ký Ví khác Số điện thoại đăng ký Agribank Plus. Giao dịch viên xử lý thế nào?
+A. Linh động phê duyệt liên kết trên hệ thống nếu khách hàng xuất trình được giấy tờ chứng minh sở hữu cả 2 số điện thoại.
+B. Hướng dẫn khách hàng cập nhật số điện thoại tại Agribank hoặc tại Ví điện tử để hai thông tin này hoàn toàn trùng khớp trước khi liên kết.
+C. Thực hiện đổi số điện thoại trên hệ thống Agribank cho khách hàng mà không cần thu thập Giấy đề nghị thay đổi thông tin.
+D. Yêu cầu khách hàng đóng tài khoản Ví điện tử hiện tại và mở Ví điện tử mới bằng số điện thoại đăng ký tại Agribank.
+Đáp án đúng: B
+Câu 4: Trong quy trình xử lý tra soát/khiếu nại giao dịch chuyển tiền liên ngân hàng qua ứng dụng Agribank Plus, trường hợp lỗi phát sinh từ phía Ngân hàng hưởng nhận, thời hạn tối đa Agribank phải hoàn hoàn tiền hoặc phản hồi kết quả cho khách hàng kể từ ngày tiếp nhận tra soát là bao lâu?
+A. Tối đa 03 ngày làm việc kể từ thời điểm khách hàng nộp đơn tra soát tại quầy.
+B. Tối đa 05 đến 09 ngày làm việc tùy thuộc vào quy định điều khoản vận hành của Tổ chức chuyển mạch tài chính (Napas).
+C. Tối đa 15 ngày làm việc theo đúng quy định chung của Ngân hàng Nhà nước về dịch vụ thanh toán.
+D. Tối đa 30 ngày làm việc để chờ Ngân hàng hưởng nhận xác minh và chuyển trả lại tiền.
+Đáp án đúng: B
+Câu 5: Trường hợp khách hàng bị lừa đảo chiếm đoạt quyền truy cập Agribank Plus và yêu cầu tra soát hủy giao dịch chuyển tiền vừa thực hiện thành công. Trách nhiệm xử lý bước đầu của Chi nhánh Agribank tiếp nhận thông tin là gì?
+A. Thực hiện hoàn tiền ngay lập tức cho khách hàng từ nguồn quỹ rủi ro vận hành của Chi nhánh.
+B. Hỗ trợ khách hàng khóa dịch vụ khẩn cấp, ghi nhận yêu cầu tra soát và chuyển thông tin cho Bộ phận chuyên trách/Cơ quan công an xử lý theo quy định, không tự ý hoàn tiền.
+C. Từ chối tiếp nhận vì lỗi thuộc về sự vôผล trách nhiệm trong bảo mật thông tin cá nhân của khách hàng.
+D. Tự động trích nợ lại số tiền từ tài khoản của người nhận tiền nếu tài khoản người nhận nằm cùng hệ thống Agribank.
+Đáp án đúng: B
+Câu 6: Theo Quy định 641, trường hợp nào sau đây Agribank có quyền chủ động đơn phương ngưng/dừng cung cấp Dịch vụ Ngân hàng điện tử đối với Khách hàng cá nhân mà không cần báo trước?
+A. Khách hàng không thực hiện giao dịch tài chính nào trên ứng dụng Agribank Plus trong vòng 30 ngày liên tục.
+B. Phát hiện khách hàng có dấu hiệu vi phạm pháp luật, gian lận, giả mạo hoặc theo yêu cầu bằng văn bản của Cơ quan Nhà nước có thẩm quyền.
+C. Khách hàng thay đổi thiết bị truy cập ứng dụng quá 03 lần trong cùng một tháng.
+D. Khách hàng rút toàn bộ số dư trên tài khoản thanh toán mặc định về mức 0 đồng.
+Đáp án đúng: B
+Câu 7: Phương thức xác thực Soft OTP (Smart OTP) tích hợp trên ứng dụng Agribank Plus có đặc điểm pháp lý và kỹ thuật nào sau đây theo Quy định 641?
+A. Sử dụng mã xác thực gửi qua tin nhắn SMS đến số điện thoại đăng ký của khách hàng để kích hoạt từng giao dịch.
+B. Gắn liền với thiết bị di động đã đăng ký của khách hàng, sinh ra mã xác thực ngẫu nhiên theo thời gian thực và áp dụng cho các hạn mức giao dịch cao.
+C. Cho phép khách hàng chia sẻ mã xác thực cho người thân sử dụng chung khi giao dịch trên thiết bị khác.
+D. Có giá trị thay thế hoàn toàn chữ ký số công cộng trong mọi hợp đồng kinh tế của doanh nghiệp.
+Đáp án đúng: B
+Câu 8: Đối với giao dịch thanh toán hóa đơn hàng hóa, dịch vụ (e-Commerce/Bill Payment) trên Agribank Plus, nếu hệ thống Agribank đã trừ tiền tài khoản nhưng nhà cung cấp chưa gạch nợ hóa đơn cho khách hàng, giao dịch này được phân loại là gì?
+A. Giao dịch vi phạm an toàn thông tin và phải chuyển hồ sơ sang Cơ quan Điều tra xử lý.
+B. Giao dịch nghi vấn gian lận và Agribank phải tự động hoàn tiền cho khách hàng sau 60 phút.
+C. Giao dịch lỗi lệch pha/chờ xử lý tra soát giữa Agribank và Đối tác trung gian thanh toán/Nhà cung cấp.
+D. Giao dịch hoàn tất thành công và Agribank không chịu bất kỳ trách nhiệm hỗ trợ nào thêm.
+Đáp án đúng: C
+Câu 9: Chi nhánh Agribank (như Agribank Chi nhánh Quảng Ngãi) có thẩm quyền nào sau đây trong việc điều chỉnh hạn mức giao dịch Ngân hàng điện tử cho khách hàng cá nhân?
+A. Được tự ý nâng hạn mức giao dịch ngày lên gấp đôi so với khung hạn mức tối đa do Trụ sở chính quy định.
+B. Thực hiện điều chỉnh hạn mức giao dịch cho khách hàng trong phạm vi khung hạn mức tối đa do Trụ sở chính ban hành từng thời kỳ.
+C. Không có quyền can thiệp, khách hàng bắt buộc phải tự điều chỉnh trên ứng dụng di động.
+D. Được quyền quyết định miễn hoàn toàn hạn mức tối đa cho khách hàng VIP của Chi nhánh.
+Đáp án đúng: B
+Câu 10: Khi khách hàng thực hiện thay đổi Thiết bị đăng nhập dịch vụ Agribank Plus sang một điện thoại mới, quy trình xác thực an toàn bắt buộc theo quy định hiện hành bao gồm bước nào?
+A. Chỉ cần nhập đúng Tên đăng nhập và Mật khẩu truy cập là có thể sử dụng ngay lập tức.
+B. Nhập Mật khẩu, xác thực mã OTP gửi qua SMS và bắt buộc xác thực sinh trắc học (khuôn mặt) trùng khớp với dữ liệu CCCD gắn chip.
+C. Khách hàng bắt buộc phải đến trực tiếp quầy giao dịch Agribank để cán bộ xác minh thủ công.
+D. Gửi email xác nhận từ địa chỉ thư điện tử đã đăng ký với ngân hàng.
+Đáp án đúng: B
+Câu 11: Trong công tác quản lý rủi ro vận hành Dịch vụ Ngân hàng điện tử, đơn vị nào tại Trụ sở chính chịu trách nhiệm chính trong việc theo dõi, phát hiện và cảnh báo các giao dịch đáng ngờ/phát hiện gian lận trực tuyến?
+A. Ban Kiểm tra Kiểm soát nội bộ.
+B. Ban Ngân hàng số phối hợp với Trung tâm CNTT và Trung tâm Quản lý rủi ro/Vận hành Ngân hàng số.
+C. Trung tâm Chăm sóc khách hàng (Call Center).
+D. Ban Pháp chế Agribank.
+Đáp án đúng: B
+Câu 12: Khách hàng B ủy quyền cho Khách hàng C quản lý tài khoản thanh toán tại Agribank theo Giấy ủy quyền hợp pháp tại Phòng công chứng. Khách hàng C đến quầy yêu cầu đăng ký dịch vụ Agribank Plus cho tài khoản của B. Giao dịch viên xử lý ra sao?
+A. Chấp nhận đăng ký ngay vì Giấy ủy quyền đã có công chứng hợp pháp theo quy định pháp luật.
+B. Từ chối đăng ký, vì Dịch vụ Ngân hàng điện tử gắn liền với yếu tố định danh cá nhân và phương thức xác thực chủ tài khoản, không áp dụng ủy quyền đăng ký sử dụng.
+C. Đồng ý đăng ký nhưng chỉ cấp hạn mức giao dịch tối thiểu 5 triệu đồng/ngày.
+D. Yêu cầu Khách hàng C phải ký cam kết bảo lãnh tài chính thay cho Khách hàng B.
+Đáp án đúng: B
+Câu 13: Trường hợp khách hàng yêu cầu hủy Dịch vụ Agribank Plus tại quầy giao dịch, giao dịch viên phải thực hiện các bước nghiệp vụ theo thứ tự ưu tiên nào?
+A. Hủy dịch vụ trên hệ thống -> Thu phí hủy dịch vụ -> Kiểm tra giấy tờ tùy thân và đối chiếu chữ ký -> Lưu hồ sơ.
+B. Kiểm tra giấy tờ tùy thân, đối chiếu thông tin/chữ ký -> Kiểm tra nghĩa vụ phí/nợ liên quan -> Thực hiện hủy trên hệ thống -> In phiếu xác nhận cho khách hàng -> Lưu hồ sơ.
+C. In phiếu xác nhận cho khách ký -> Hủy dịch vụ trên hệ thống -> Kiểm tra giấy tờ tùy thân sau.
+D. Chuyển hồ sơ lên Giám đốc Chi nhánh phê duyệt -> Mới được phép thao tác hủy trên hệ thống.
+Đáp án đúng: B
+Câu 14: Theo Quy định 641, việc quản lý và lưu trữ hồ sơ đăng ký/thay đổi/hủy Dịch vụ Ngân hàng điện tử của khách hàng tại Chi nhánh được thực hiện như thế nào?
+A. Lưu trữ trong vòng 01 năm sau đó tự hủy để giảm tải kho lưu trữ.
+B. Quản lý, lưu trữ an toàn, bảo mật theo đúng quy định về lưu trữ hồ sơ giao dịch ngân hàng và quy định pháp luật về lưu trữ tài liệu kế toán/định danh.
+C. Không cần lưu hồ sơ giấy nếu khách hàng đã thực hiện đăng ký trực tuyến thành công.
+D. Gửi toàn bộ hồ sơ gốc về Trung tâm CNTT Trụ sở chính tập trung lưu giữ.
+Đáp án đúng: B
+Câu 15: Khi phát hiện lỗi hệ thống diện rộng gây gián đoạn dịch vụ Agribank Plus, trách nhiệm đầu mối ứng cứu và thông báo sự cố thuộc về đơn vị nào?
+A. Phòng Dịch vụ Khách hàng tại từng Chi nhánh tỉnh.
+B. Trung tâm Công nghệ thông tin phối hợp với Ban Ngân hàng số và Trung tâm CSKH để xử lý kỹ thuật và truyền thông tới khách hàng.
+C. Ban Truyền thông Agribank đơn phương xử lý.
+D. Ngân hàng Nhà nước Việt Nam.
+Đáp án đúng: B
+Câu 16: Khách hàng sử dụng dịch vụ SMS Banking nhận được thông báo biến động số dư cho một giao dịch mà mình không thực hiện. Khách hàng gọi lên Tổng đài CSKH. Tổng đài viên cần làm gì trước tiên?
+A. Hướng dẫn khách hàng đến ngay công an phường gần nhất để trình báo vụ việc.
+B. Xác minh thông tin chủ tài khoản, hỗ trợ tạm khóa tài khoản/dịch vụ khẩn cấp nếu có nguy cơ rủi ro và ghi nhận thông tin chuyển bộ phận chuyên trách kiểm tra.
+C. Khai báo hủy ngay lập tức toàn bộ tài khoản thanh toán của khách hàng trên hệ thống Core Banking.
+D. Khai báo đây là lỗi mạng viễn thông và đề nghị khách hàng liên hệ nhà mạng MobiFone/Viettel.
+Đáp án đúng: B
+Câu 17: Khái niệm "Tài khoản thanh toán mặc định" trong Quy định 641 CÓ THỂ được khách hàng thay đổi sang một tài khoản thanh toán khác của chính khách hàng đó hay không?
+A. Không được phép thay đổi, tài khoản mặc định cố định theo tài khoản mở đầu tiên tại Agribank.
+B. Được phép thay đổi linh hoạt theo nhu cầu của khách hàng trực tiếp trên ứng dụng Agribank Plus hoặc tại Điểm giao dịch Agribank.
+C. Chỉ được thay đổi 01 lần duy nhất trong suốt quá trình sử dụng dịch vụ.
+D. Phải được sự đồng ý bằng văn bản của Trưởng phòng Dịch vụ Khách hàng Chi nhánh.
+Đáp án đúng: B
+Câu 18: Nghĩa vụ của Agribank trong việc bảo vệ dữ liệu cá nhân của khách hàng khi cung cấp Dịch vụ Ngân hàng điện tử được quy định như thế nào?
+A. Agribank được toàn quyền chia sẻ dữ liệu khách hàng cho các đối tác quảng cáo mà không cần sự đồng ý của khách hàng.
+B. Agribank có trách nhiệm bảo mật tuyệt đối thông tin dữ liệu cá nhân khách hàng, chỉ cung cấp cho bên thứ ba khi có sự đồng ý của khách hàng hoặc theo yêu cầu của cơ quan nhà nước có thẩm quyền theo quy định pháp luật.
+C. Agribank chỉ bảo mật thông tin số dư tài khoản, các thông tin định danh khác không thuộc phạm vi bảo mật.
+D. Agribank không chịu trách nhiệm nếu dữ liệu bị rò rỉ từ các đơn vị cung cấp hạ tầng viễn thông.
+Đáp án đúng: B
+Câu 19: Khi khách hàng nhập sai Mật khẩu truy cập Agribank Plus vượt quá số lần quy định liên tiếp (ví dụ: 05 lần), hệ thống sẽ xử lý như thế nào?
+A. Tự động hủy tài khoản thanh toán của khách hàng tại Agribank.
+B. Tự động khóa tạm thời dịch vụ Ngân hàng điện tử của khách hàng để đảm bảo an toàn.
+C. Tự động trừ tiền phạt truy cập trái phép trên tài khoản mặc định.
+D. Tự động gửi mật khẩu mới về địa chỉ nhà riêng của khách hàng.
+Đáp án đúng: B
+Câu 20: Hiệu lực áp dụng của Quy định số 641/QĐ-NHNo-KHCN áp dụng đối với đối tượng nào trong toàn hệ thống Agribank?
+A. Chỉ áp dụng đối với các Chi nhánh Agribank thuộc Khu vực Thị xã, Thành phố.
+B. Áp dụng thống nhất đối với tất cả các đơn vị, Chi nhánh, Hội sở và toàn thể cán bộ nhân viên Agribank liên quan đến việc quản lý, vận hành và cung ứng Dịch vụ Ngân hàng điện tử cho KHCN.
+C. Chỉ áp dụng cho cán bộ thuộc Bộ phận Ngân hàng số và Công nghệ thông tin.
+D. Do Hội đồng Thành viên Agribank quyết định áp dụng riêng cho từng vùng miền.
+Đáp án đúng: B
+Câu 21 (Điều 19). Về điều kiện năng lực tài chính và kết quả hoạt động đối với khách hàng vay vốn phục vụ nhu cầu sản xuất kinh doanh, quy định của Agribank yêu cầu cụ thể như thế nào?
+A. Khách hàng bắt buộc phải hoạt động liên tục tối thiểu 03 năm gần nhất, có lợi nhuận sau thuế năm sau cao hơn năm trước và không phát sinh bất kỳ khoản nợ quá hạn nào tại các TCTD. 
+B. Khách hàng phải kinh doanh có hiệu quả, năm trước liền kề có lãi; trường hợp bị lỗ thì phải có phương án khắc phục lỗ khả thi, đảm bảo khả năng trả nợ và không có nợ xấu tại Agribank trong 3 năm gần nhất. 
+C. Khách hàng phải có tài sản bảo đảm trị giá tối thiểu 130% tổng dư nợ vay, đồng thời không phát sinh nợ quá hạn tại bất kỳ TCTD nào trong vòng 12 tháng tính đến thời điểm đề nghị vay vốn. 
+D. Khách hàng phải chứng minh được nguồn thu nhập cố định hàng tháng gấp 02 lần số tiền trả nợ gốc và lãi hàng tháng, đồng thời không có nợ chú ý tại Trung tâm Thông tin Tín dụng Quốc gia (CIC). 
+Đáp án: B
+Câu 22 (Điều 19). Trường hợp khách hàng vay vốn có bảo đảm bằng số dư tiền gửi tại Agribank thì việc áp dụng các điều kiện về năng lực tài chính, tình hình kinh doanh và phương án sử dụng vốn được quy định như thế nào?
+A. Khách hàng vẫn phải đáp ứng đầy đủ các điều kiện về phương án kinh doanh có lãi và không có nợ xấu tại các tổ chức tín dụng khác. 
+B. Agribank không phải thực hiện đánh giá các điều kiện quy định tại điểm a, b, c khoản 4 Điều 19 nếu khách hàng có bảo đảm bằng 100% giá trị nợ cho vay bằng số dư tiền gửi tại Agribank. 
+C. Khách hàng được miễn toàn bộ điều kiện vay vốn ngoại trừ điều kiện về năng lực hành vi dân sự và năng lực pháp luật dân sự của người đại diện. 
+D. Khách hàng chỉ cần đáp ứng 50% các điều kiện quy định tại khoản 4 Điều 19 nếu tài sản bảo đảm là tiền gửi thuộc sở hữu của bên thứ ba ký góp vốn. 
+Đáp án: B
+Câu 23 (Điều 20). Trong các nhu cầu vốn dưới đây, nhu cầu vốn nào thuộc đối tượng Agribank KHÔNG ĐƯỢC PHÉP cho vay theo quy định tại Quy chế 456?
+A. Cho vay để thanh toán chi phí mua nguyên vật liệu phục vụ sản xuất nông nghiệp xuất khẩu có hợp đồng tiêu thụ sản phẩm. 
+B. Cho vay để thanh toán tiền mua vàng miếng; cho vay mua tài sản, thanh toán các chi phí để thực hiện giao dịch mà pháp luật cấm. 
+C. Cho vay để thanh toán tiền nhận chuyển nhượng quyền sử dụng đất nông nghiệp nhằm mở rộng trang trại chăn nuôi tập trung. 
+D. Cho vay để mua sắm trang thiết bị, máy móc y tế phục vụ hoạt động khám chữa bệnh của bệnh viện tư nhân. 
+Đáp án: B
+Câu 24 (Điều 20). Agribank quy định như thế nào về việc cho vay để trả nợ khoản cấp tín dụng tại chính Agribank nơi cho vay hoặc đơn vị khác trong cùng hệ thống?
+A. Nghiêm cấm tuyệt đối trong mọi trường hợp nhằm tránh hiện tượng che giấu nợ xấu và đảo nợ kỹ thuật giữa các chi nhánh. 
+B. Chỉ chấp thuận nếu khách hàng cam kết bổ sung thêm tài sản bảo đảm là bất động sản có giá trị gấp 2 lần khoản vay cũ. 
+C. Được phép thực hiện cho vay để thanh toán lãi tiền vay phát sinh trong quá trình thi công xây dựng công trình, mà chi phí lãi tiền vay đó đã được tính trong tổng mức đầu tư xây dựng được cấp có thẩm quyền phê duyệt theo quy định của pháp luật. 
+D. Được phép thực hiện nếu khách hàng thuộc đối tượng doanh nghiệp nhà nước và có văn bản bảo lãnh thanh toán của Tổng công ty. 
+Đáp án: C
+Câu 25 (Điều 20). Khách hàng A muốn vay vốn tại Agribank để trả nợ trước hạn một khoản vay trung hạn tại một Ngân hàng thương mại khác. Điều kiện nào dưới đây là BẮT BUỘC để Agribank xem xét cho vay?
+A. Khoản vay tại Ngân hàng khác phải là khoản vay ngắn hạn và đã trả nợ gốc được tối thiểu 50% thời hạn vay. 
+B. Thời hạn cho vay tại Agribank không vượt quá thời hạn cho vay còn lại của khoản vay cũ và khoản vay cũ chưa từng thực hiện cơ cấu lại thời hạn trả nợ. 
+C. Khách hàng phải tất toán toàn bộ các khoản vay khác tại các TCTD khác và chỉ duy nhất có quan hệ tín dụng tại Agribank. 
+D. Tài sản bảo đảm cho khoản vay mới tại Agribank bắt buộc phải là chính tài sản đang thế chấp tại Ngân hàng cũ đã giải chấp xong. 
+Đáp án: B
+Câu 26 (Điều 21). Ông Bình gửi hồ sơ vay vốn trung hạn tại Agribank để thực hiện dự án đầu tư nhà máy sản xuất bao bì. Tỷ lệ mức cho vay tối đa của Agribank so với tổng nhu cầu vốn của dự án này được quy định như thế nào?
+A. Mức cho vay tối đa không vượt quá 50% tổng nhu cầu vốn thực hiện dự án hoạt động kinh doanh. 
+B. Mức cho vay tối đa không vượt quá 70% tổng nhu cầu vốn thực hiện dự án hoạt động kinh doanh. 
+C. Mức cho vay tối đa không vượt quá 75% tổng nhu cầu vốn thực hiện dự án hoạt động kinh doanh. 
+D. Mức cho vay tối đa không vượt quá 85% tổng nhu cầu vốn thực hiện dự án hoạt động kinh doanh. 
+Đáp án: C
+Câu 27 (Điều 21). Công ty TNHH Hải Hà đề nghị vay vốn dài hạn tại Agribank để đầu tư xây dựng khu nghỉ dưỡng sinh thái. Mức cho vay tối đa tính trên tổng nhu cầu vốn của dự án này là bao nhiêu?
+A. Tối đa 60% tổng nhu cầu vốn thực hiện dự án hoạt động kinh doanh. 
+B. Tối đa 70% tổng nhu cầu vốn thực hiện dự án hoạt động kinh doanh. 
+C. Tối đa 75% tổng nhu cầu vốn thực hiện dự án hoạt động kinh doanh. 
+D. Tối đa 80% tổng nhu cầu vốn thực hiện dự án hoạt động kinh doanh. 
+Đáp án: B
+Câu 28 (Điều 23). Để hạn chế rủi ro và xung đột lợi ích, Agribank quy định như thế nào về việc cấp tín dụng không có bảo đảm đối với doanh nghiệp có sự góp vốn của cán bộ lãnh đạo Chi nhánh loại I?
+A. Không được cấp tín dụng không có bảo đảm đối với doanh nghiệp mà Giám đốc hoặc Phó Giám đốc Chi nhánh loại I sở hữu trên 10% vốn điều lệ. 
+B. Không được cấp tín dụng không có bảo đảm đối với doanh nghiệp mà Trưởng phòng Khách hàng sở hữu từ 5% vốn điều lệ trở lên. 
+C. Được cấp tín dụng không có bảo đảm nhưng phải trình Tổng Giám đốc Agribank phê duyệt trước khi ký hợp đồng tín dụng. 
+D. Không được cấp tín dụng không có bảo đảm nếu người phối ngẫu của Giám đốc Chi nhánh làm Kế toán trưởng tại doanh nghiệp đó. 
+Đáp án: A
+Câu 29 (Điều 24). Trong quy định về thời hạn xét duyệt cho vay tại Agribank nơi cho vay kể từ ngày nhận đầy đủ hồ sơ, thông tin hợp lệ, thời gian tối đa đối với khoản cho vay dài hạn được xác định là bao lâu?
+A. Không quá 05 ngày làm việc đối với cho vay ngắn hạn và không quá 10 ngày làm việc đối với cho vay dài hạn. 
+B. Không quá 07 ngày làm việc đối với cho vay trung hạn và không quá 12 ngày làm việc đối với cho vay dài hạn. 
+C. Tối đa là 15 ngày làm việc đối với các khoản cho vay dài hạn thực hiện dự án đầu tư. 
+D. Tối đa là 20 ngày làm việc đối với tất cả các khoản cho vay phải trình Hội đồng thẩm định Trụ sở chính. 
+Đáp án: C
+Câu 30 (Điều 24). Đối với các khoản vay phức tạp cần thông qua cơ chế Hội đồng (như Hội đồng tín dụng tại Chi nhánh), thời hạn xét duyệt cho vay được điều chỉnh như thế nào so với quy định thông thường?
+A. Được cộng thêm tối đa 03 ngày làm việc để hoàn thiện biên bản họp Hội đồng và bổ sung hồ sơ. 
+B. Được cộng thêm tối đa 05 ngày làm việc tính từ thời điểm tiếp nhận đủ hồ sơ trình Hội đồng tín dụng. 
+C. Được kéo dài thời gian xét duyệt gấp đôi so với thời gian quy định cho khoản vay thông thường. 
+D. Bắt buộc phải hoàn thành trong ngày làm việc tiếp theo kể từ khi Hội đồng kết thúc phiên họp. 
+Đáp án: B
+Câu 31 (Điều 28). Khách hàng vay vốn theo phương thức cho vay lưu vụ phục vụ sản xuất nông nghiệp có chu kỳ kế tiếp được Agribank cho phép áp dụng dư nợ gốc như thế nào?
+A. Dư nợ gốc của chu kỳ sản xuất trước được tiếp tục sử dụng cho chu kỳ sản xuất tiếp theo nhưng không vượt quá 02 chu kỳ sản xuất liên tiếp. 
+B. Dư nợ gốc phải được tất toán 100% trước khi giải ngân cho chu kỳ tiếp theo, không cho phép kéo dài dư nợ. 
+C. Dư nợ gốc được phép gia hạn tối đa 03 chu kỳ sản xuất nếu khách hàng có tài sản bảo đảm là đất nông nghiệp. 
+D. Dư nợ gốc được chuyển thành khoản vay trung hạn trả góp hàng tháng tính từ chu kỳ sản xuất thứ hai. 
+Đáp án: A
+Câu 32 (Điều 28). Khi thỏa thuận áp dụng phương thức cho vay theo hạn mức dự phòng với khách hàng để đáp ứng nhu cầu vốn phát sinh đột xuất, thời hạn hiệu lực của hạn mức được quy định ra sao?
+A. Thời hạn hiệu lực của hạn mức dự phòng do hai bên thỏa thuận nhưng không vượt quá 06 tháng kể từ ngày ký. 
+B. Agribank và khách hàng thỏa thuận thời hạn hiệu lực của hạn mức dự phòng nhưng không vượt quá 01 năm. 
+C. Thời hạn hiệu lực của hạn mức dự phòng tự động kéo dài bằng với thời hạn của hợp đồng thế chấp tài sản. 
+D. Mức hiệu lực tối đa là 03 năm và phải định kỳ đánh giá lại khả năng tài chính của khách hàng 6 tháng một lần. 
+Đáp án: B
+Câu 33 (Điều 28). Khách hàng vay vốn theo phương thức cho vay quay vòng (revolving loan) phải đáp ứng những yêu cầu khắt khe nào về chu kỳ hoạt động kinh doanh và thời hạn cho vay?
+A. Phương thức này chỉ áp dụng đối với nhu cầu vốn có chu kỳ hoạt động kinh doanh không quá 01 tháng và thời hạn cho vay không vượt quá 03 tháng. 
+B. Áp dụng cho các nhu cầu vốn ngắn hạn có chu kỳ kinh doanh dưới 03 tháng và thời hạn cho vay tối đa là 06 tháng. 
+C. Áp dụng cho doanh nghiệp xuất nhập khẩu có chu kỳ kinh doanh 06 tháng và thời hạn cho vay tối đa là 12 tháng. 
+D. Áp dụng cho khách hàng cá nhân vay tiêu dùng có chu kỳ thu nhập hàng tháng và thời hạn cho vay tối đa là 24 tháng. 
+Đáp án: A
+Câu 34 (Điều 28). Trong phương thức cho vay tuần hoàn (rollover), quy định về tổng thời hạn vay vốn đối với khoản vay được tiếp tục dư nợ được tính chính xác như thế nào?
+A. Tổng thời hạn vay vốn không được vượt quá 06 tháng kể từ ngày giải ngân đợt đầu tiên của khoản vay. 
+B. Tổng thời hạn vay vốn không vượt quá 12 tháng kể từ ngày giải ngân ban đầu và không vượt quá một chu kỳ kinh doanh. 
+C. Tổng thời hạn vay vốn được tính bằng thời hạn vay ban đầu cộng thêm tối đa 18 tháng gia hạn thêm. 
+D. Tổng thời hạn vay vốn không vượt quá 24 tháng nhưng khách hàng phải trả tối thiểu 20% gốc vào cuối mỗi chu kỳ. 
+Đáp án: B
+Câu 35 (Điều 31). Nhằm hỗ trợ khách hàng phục hồi hoạt động sản xuất kinh doanh khi gặp khó khăn khách quan, Agribank nơi cho vay áp dụng hình thức cho vay tháo gỡ khó khăn với định hướng thời hạn vay ra sao?
+A. Chủ yếu áp dụng thời hạn cho vay ngắn hạn để giúp khách hàng khôi phục dòng tiền lưu động nhanh chóng. 
+B. Bắt buộc áp dụng thời hạn cho vay trung và dài hạn để giảm bớt áp lực trả nợ gốc trong ngắn hạn cho khách hàng. 
+C. Chuyển toàn bộ dư nợ cũ và mới thành khoản vay dài hạn trả góp trong vòng 10 năm. 
+D. Tùy thuộc hoàn toàn vào đề xuất của khách hàng mà không bị khống chế bởi kỳ hạn ngắn hạn hay trung hạn. 
+Đáp án: A
+Câu 36 (Điều 37). Để đảm bảo tính độc lập, khách quan và quản trị rủi ro trong nghiệp vụ cơ cấu lại thời hạn trả nợ, Quy chế 456 quy định nguyên tắc về thẩm quyền quyết định như thế nào?
+A. Người quyết định cơ cấu lại thời hạn trả nợ phải chính là Người đã ký phê duyệt quyết định cho vay ban đầu để nắm rõ tình hình khách hàng. 
+B. Người quyết định cơ cấu lại thời hạn trả nợ không là Người quyết định cho vay đối với khoản vay đó, trừ trường hợp do Hội đồng thành viên hoặc Tổng Giám đốc phê duyệt. 
+C. Quyết định cơ cấu lại thời hạn trả nợ bắt buộc phải do Trưởng Ban Kiểm tra giám sát nội bộ tại Chi nhánh trực tiếp phê duyệt. 
+D. Việc cơ cấu lại thời hạn trả nợ do Hội đồng xử lý rủi ro tại Trụ sở chính quyết định trong mọi trường hợp. 
+Đáp án: B
+Câu 37 (Điều 37). Đối với nghiệp vụ điều chỉnh kỳ hạn trả nợ (bao gồm cả các khoản vay do cấp cao hơn phê duyệt cho vay ban đầu), thẩm quyền quyết định được phân cấp ra sao?
+A. Phải trình lên cấp có thẩm quyền phê duyệt cho vay ban đầu ra quyết định điều chỉnh kỳ hạn trả nợ. 
+B. Agribank nơi cho vay có thẩm quyền quyết định việc điều chỉnh kỳ hạn trả nợ cho khách hàng (bao gồm cả khoản vay đã được cấp cao hơn phê duyệt). 
+C. Bắt buộc phải trình Tổng Giám đốc phê duyệt đối với các khoản vay thuộc thẩm quyền phê duyệt của Chi nhánh loại I. 
+D. Do Trưởng phòng Quản lý rủi ro tại Chi nhánh xem xét và ra quyết định bằng văn bản. 
+Đáp án: B
+Câu 38 (Điều 37). Khách hàng gặp khó khăn không trả được nợ đúng hạn muốn được xem xét cơ cấu lại thời hạn trả nợ thì thời điểm thực hiện cơ cấu phải tuân thủ khung thời gian nào?
+A. Việc cơ cấu lại thời hạn trả nợ phải được thực hiện trước thời điểm khoản vay đến hạn thanh toán tối thiểu 30 ngày. 
+B. Việc cơ cấu lại thời hạn trả nợ được thực hiện trước hoặc trong thời hạn 10 ngày kể từ ngày đến kỳ hạn, thời hạn trả nợ đã thỏa thuận. 
+C. Được thực hiện trong vòng 30 ngày sau khi khoản vay bị chuyển sang nhóm nợ quá hạn (từ Nhóm 2 trở đi). 
+D. Phải thực hiện ngay trong ngày làm việc cuối cùng của tháng phát sinh kỳ hạn trả nợ gốc/lãi. 
+Đáp án: B
+Câu 39 (Điều 42). Trong quy trình cấp tín dụng theo Quy chế 456, cán bộ phụ trách vai trò "Người quan hệ khách hàng" có trách nhiệm chính nào sau đây đối với hồ sơ cho vay?
+A. Trực tiếp thực hiện thẩm định độc lập các rủi ro pháp lý, rủi ro phương án kinh doanh và lập Báo cáo thẩm định cho vay. 
+B. Thu thập thông tin, tài liệu, tiếp xúc khách hàng và trực tiếp lập "Báo cáo đề xuất cho vay/Báo cáo đề xuất cấp giới hạn tín dụng". 
+C. Chịu trách nhiệm phê duyệt giải ngân và ký kết hợp đồng thế chấp tài sản bảo đảm với khách hàng. 
+D. Kiểm tra sau khi cho vay và đưa ra quyết định chuyển nhóm nợ đối với các khoản vay phát sinh rủi ro. 
+Đáp án: B
+Câu 40 (Điều 55). Văn bản Quy chế cho vay 456/QC-HĐTV-TD được Hội đồng thành viên Agribank ký ban hành ngày 25/06/2026. Thời điểm chính thức có hiệu lực thi hành của Quy chế này là khi nào?
+A. Có hiệu lực ngay kể từ ngày ký ban hành (ngày 25/06/2026). 
+B. Chính thức có hiệu lực thi hành kể từ ngày 01 tháng 07 năm 2026. 
+C. Có hiệu lực sau 30 ngày kể từ ngày ký ban hành (ngày 25/07/2026). 
+D. Chính thức có hiệu lực áp dụng từ ngày 01 tháng 08 năm 2026. 
+Đáp án: B
+Câu 41 (Điều 1). Ông Nguyễn Văn A ký hợp đồng vay vốn tại Agribank để kinh doanh. Trong quá trình thụ lý, cán bộ tín dụng giải thích về phạm vi điều chỉnh của Quy chế 879/QC-HĐTV-TD. Khẳng định nào sau đây là ĐÚNG về phạm vi điều chỉnh và đối tượng áp dụng của Quy chế này?
+A. Quy chế 879 áp dụng cho toàn bộ hoạt động cấp tín dụng của Agribank bao gồm cả việc cấp tín dụng đối với các tổ chức tín dụng khác hoặc chi nhánh Agribank tại nước ngoài. 
+B. Quy chế 879 quy định về tài sản bảo đảm, việc xác lập, thực hiện biện pháp bảo đảm và xử lý tài sản bảo đảm; việc cấp tín dụng đối với TCTD khác thực hiện theo quy định riêng. 
+C. Quy chế 879 chỉ áp dụng bắt buộc đối với khách hàng vay vốn là cá nhân, không áp dụng bắt buộc đối với khách hàng là doanh nghiệp nhà nước hoặc tập đoàn kinh tế. 
+D. Quy chế 879 quy định điều chỉnh tất cả các biện pháp bảo đảm nghĩa vụ dân sự phát sinh trên lãnh thổ Việt Nam mà không giới hạn riêng trong hoạt động cấp tín dụng của Agribank. 
+Đáp án: B
+Câu 42 (Điều 3). Công ty X muốn dùng một tài sản là máy móc trang thiết bị chưa hình thành tại thời điểm ký hợp đồng bảo đảm để thế chấp vay vốn. Theo quy định tại Điều 3 Quy chế 879, khái niệm và phạm vi áp dụng tài sản hình thành trong tương lai được xác định như thế nào?
+A. Bao gồm tài sản chưa hình thành hoặc đã hình thành nhưng xác lập quyền sở hữu sau thời điểm xác lập giao dịch bảo đảm; không áp dụng đối với quyền sử dụng đất. 
+B. Bao gồm tài sản chưa hình thành hoặc đã hình thành nhưng xác lập quyền sở hữu sau thời điểm xác lập giao dịch bảo đảm; áp dụng cho mọi loại tài sản gồm cả quyền sử dụng đất. 
+C. Bao gồm tài sản đã được xây dựng hoàn thiện nhưng chưa hoàn tất đăng ký quyền sở hữu; áp dụng bắt buộc đối với các dự án bất động sản và các loại tài sản gắn liền với đất. 
+D. Bao gồm các tài sản do bên thế chấp đầu tư mua sắm hoàn toàn bằng vốn tự có nhưng chưa đưa vào vận hành, khai thác sử dụng tại thời điểm ký kết hợp đồng bảo đảm. 
+Đáp án: A
+Câu 43 (Điều 4). Doanh nghiệp Y có một tài sản là dây chuyền sản xuất được định giá 20 tỷ đồng. Doanh nghiệp muốn dùng tài sản này để bảo đảm cho 02 khoản vay khác nhau tại Agribank. Quy định về việc một tài sản dùng để bảo đảm thực hiện nhiều nghĩa vụ được áp dụng ra sao?
+A. Tài sản chỉ được dùng bảo đảm một nghĩa vụ duy nhất nhằm hạn chế tối đa rủi ro pháp lý và đơn giản hóa thủ tục khi chi nhánh Agribank thực hiện xử lý tài sản bảo đảm. 
+B. Tài sản được bảo đảm nhiều nghĩa vụ nếu giá trị tài sản lớn hơn tổng các nghĩa vụ, trừ trường hợp có thỏa thuận khác hoặc luật quy định khác và phải thông báo bằng văn bản. 
+C. Tài sản được bảo đảm nhiều nghĩa vụ khi tổng giá trị các nghĩa vụ được bảo đảm không vượt quá 50% giá trị tài sản bảo đảm đã được Agribank định giá tại thời điểm ban đầu. 
+D. Tài sản được bảo đảm nhiều nghĩa vụ nhưng khi xử lý tài sản để thu hồi một nghĩa vụ đến hạn thì các nghĩa vụ chưa đến hạn vẫn tiếp tục được giữ nguyên thời hạn nợ. 
+Đáp án: B
+Câu 44 (Điều 6). Agribank đã đăng ký giao dịch bảo đảm đối với chiếc xe ô tô của Khách hàng B (biện pháp bảo đảm đã phát sinh hiệu lực đối kháng với người thứ ba). Sau đó, Khách hàng B tự ý bán chiếc xe này cho người khác mà không có sự đồng ý của Agribank. Quyền truy đòi tài sản bảo đảm của Agribank được quy định như thế nào?
+A. Agribank chấm dứt quyền truy đòi chiếc xe do bên mua đã hoàn tất thủ tục đăng ký quyền sở hữu tài sản hợp pháp theo đúng quy định của pháp luật về giao dịch dân sự. 
+B. Quyền của Agribank đối với tài sản bảo đảm không thay đổi hoặc chấm dứt khi tài sản bị chuyển giao cho người khác do mua bán, chuyển nhượng mà không có sự đồng ý của Agribank. 
+C. Agribank chỉ được quyền yêu cầu Khách hàng B bồi thường toàn bộ thiệt hại bằng tiền mặt chứ không được phép thực hiện quyền truy đòi chiếc xe ô tô từ người mua mới. 
+D. Biện pháp bảo đảm đối với chiếc xe tự động hủy bỏ và được chuyển đổi sang hình thức cầm cố các tài sản động sản khác thuộc quyền sở hữu hiện có của người mua xe. 
+Đáp án: B
+Câu 45 (Điều 7). Chi nhánh Agribank Z chấp thuận nhận thêm một tài sản bảo đảm bổ sung từ khách hàng để tăng cường khả năng thu hồi nợ. Việc hạch toán và theo dõi tài sản bảo đảm bổ sung trên hệ thống IPCAS được quy định như thế nào?
+A. Hạch toán theo giá trị định giá thực tế của Hội đồng định giá hoặc Tổ thẩm định tài sản bảo đảm tại chi nhánh Agribank nơi thực hiện cấp tín dụng cho khách hàng. 
+B. Hạch toán theo 100% giá trị định giá do tổ chức thẩm định giá độc lập xác định tại chứng thư thẩm định giá cấp cho khách hàng trước thời điểm ký hợp đồng thế chấp. 
+C. Nhận bổ sung nhằm tăng khả năng thu hồi nợ và giá trị mỗi tài sản bảo đảm bổ sung được hạch toán theo dõi trong hệ thống IPCAS theo giá danh nghĩa bằng 01 (một) đồng. 
+D. Không thực hiện hạch toán trên hệ thống IPCAS mà chỉ tiến hành ghi chép, theo dõi riêng trên sổ sách ngoại bảng của Phòng Kế toán và Ngân quỹ tại chi nhánh cấp tín dụng. 
+Đáp án: C
+Câu 46 (Điều 8). Cán bộ thẩm định thực hiện kiểm tra điều kiện đối với tài sản bảo đảm là máy móc thiết bị do khách hàng đưa vào thế chấp. Điều kiện BẮT BUỘC nào sau đây tài sản phải đáp ứng tại thời điểm xác lập biện pháp bảo đảm?
+A. Phải thuộc sở hữu/sử dụng của bên bảo đảm; được giao dịch; không tranh chấp; không bị thu hồi; hoàn thành nghĩa vụ tài chính; còn niên hạn và mua bảo hiểm nếu quy định. 
+B. Phải có thời gian đã qua sử dụng không quá 02 năm kể từ ngày sản xuất và được thẩm định lại giá trị bởi ít nhất 02 tổ chức thẩm định giá độc lập có uy tín trên thị trường. 
+C. Phải được di dời và lưu giữ trực tiếp tại kho bãi thuộc quyền quản lý của Agribank nơi cấp tín dụng trong suốt thời gian khách hàng thực hiện hợp đồng vay vốn. 
+D. Phải có giá trị thị trường quy đổi tối thiểu lớn hơn 200% tổng dư nợ gốc và lãi vay phát sinh dự kiến của khoản cấp tín dụng được phê duyệt tại bản trình thẩm định. 
+Đáp án: A
+Câu 47 (Điều 10). Khách hàng C thế chấp Bất động sản (không phải là trường hợp định giá đất theo bảng giá đất của UBND cấp tỉnh) để vay vốn tại Agribank. Mức cấp tín dụng tối đa so với giá trị tài sản bảo đảm này theo quy định chung tại Quy chế 879 là bao nhiêu?
+A. Mức cấp tín dụng tối đa được phê duyệt không vượt quá 70% so với tổng giá trị tài sản bảo đảm đã được Agribank định giá. 
+B. Mức cấp tín dụng tối đa được phê duyệt không vượt quá 75% so với tổng giá trị tài sản bảo đảm đã được Agribank định giá. 
+C. Mức cấp tín dụng tối đa được phê duyệt không vượt quá 85% so với tổng giá trị tài sản bảo đảm đã được Agribank định giá. 
+D. Mức cấp tín dụng tối đa được phê duyệt không vượt quá 100% so với tổng giá trị tài sản bảo đảm đã được Agribank định giá. 
+Đáp án: C
+Câu 48 (Điều 10). Khách hàng D dùng Tiền gửi tiết kiệm bằng đồng Việt Nam do Agribank phát hành có thời hạn thanh toán còn lại 06 tháng để bảo đảm cho khoản vay ngắn hạn. Mức cấp tín dụng tối đa đối với tài sản bảo đảm này được quy định như thế nào?
+A. Tối đa không vượt quá 90% số tiền gốc ghi trên Tiền gửi tiết kiệm đã được Agribank kiểm tra và phong tỏa thành công. 
+B. Tối đa không vượt quá tiền gốc cộng tiền lãi còn được hưởng trừ phí phát sinh và trừ số lãi vay, phí trong thời hạn cấp tín dụng. 
+C. Tối đa không vượt quá 95% tổng số tiền gốc và tiền lãi dự kiến thu được ghi trên Sổ tiết kiệm tính đến ngày đến hạn. 
+D. Tối đa không vượt quá 100% số tiền gốc ghi trên Tiền gửi tiết kiệm đối với tất cả các khoản vay bằng đồng Việt Nam. 
+Đáp án: B
+Câu 49 (Điều 10). Trong trường hợp đặc biệt đối với từng khoản cấp tín dụng cụ thể, Tổng Giám đốc Agribank có thẩm quyền quyết định mức cấp tín dụng so với giá trị tài sản bảo đảm ở mức tối đa là bao nhiêu?
+A. Tối đa không vượt quá 85% giá trị tài sản bảo đảm đã được thẩm định. 
+B. Tối đa không vượt quá 90% giá trị tài sản bảo đảm đã được thẩm định. 
+C. Tối đa không vượt quá 95% giá trị tài sản bảo đảm đã được thẩm định. 
+D. Tối đa không vượt quá 100% giá trị tài sản bảo đảm đã được thẩm định. 
+Đáp án: D
+Câu 50 (Điều 11). Khi xác định giá trị tài sản bảo đảm là Quyền sử dụng đất để làm căn cứ cấp tín dụng, Agribank áp dụng cơ chế xác định Bảng giá đất như thế nào?
+A. Agribank áp dụng trực tiếp 100% bảng giá đất do Ủy ban nhân dân cấp tỉnh ban hành công khai tại thời điểm thực hiện định giá. 
+B. Agribank thuê đơn vị có chức năng thẩm định giá tư vấn xây dựng Bảng giá quyền sử dụng đất trên địa bàn hành chính mỗi tỉnh, thành phố. 
+C. Agribank căn cứ vào mức giá ghi trên hợp đồng chuyển nhượng quyền sử dụng đất gần nhất do khách hàng cung cấp cho ngân hàng. 
+D. Agribank thành lập Hội đồng định giá riêng tại chi nhánh để phê duyệt bảng giá đất cho từng huyện, thị xã trên địa bàn hoạt động. 
+Đáp án: B
+Câu 51 (Điều 13). Bên thế chấp tài sản là cây hằng năm (theo Luật Trồng trọt) tiến hành thu hoạch hoa lợi. Theo quy định tại Quy chế 879, hoa lợi hoặc tài sản có được từ việc thu hoạch này sẽ được xử lý ra sao?
+A. Thuộc toàn quyền sở hữu riêng của bên thế chấp và không liên quan đến nghĩa vụ bảo đảm đối với khoản vay tại Agribank. 
+B. Hoa lợi hoặc tài sản khác có được từ việc thu hoạch cây hằng năm hoặc phá dỡ công trình tạm sẽ trở thành tài sản bảo đảm. 
+C. Bên thế chấp bắt buộc phải bán toàn bộ hoa lợi cho Agribank theo mức giá niêm yết trên thị trường tại thời điểm thu hoạch. 
+D. Hợp đồng thế chấp tài sản đương nhiên chấm dứt hiệu lực đối với toàn bộ phần tài sản gốc đã được thu hoạch hoặc phá dỡ. 
+Đáp án: B
+Câu 52 (Điều 15). Hợp đồng thế chấp tài sản nào sau đây BẮT BUỘC phải thực hiện công chứng tại tổ chức hành nghề công chứng (hoặc chứng thực của UBND cấp xã đối với hộ gia đình, cá nhân người Việt Nam)?
+A. Hợp đồng thế chấp bằng số dư tài khoản tiền gửi hoặc tiền gửi tiết kiệm mở tại các chi nhánh trong hệ thống Agribank. 
+B. Hợp đồng thế chấp bằng quyền sử dụng đất, tài sản gắn liền với đất (bao gồm cả tài sản gắn liền với đất hình thành trong tương lai). 
+C. Hợp đồng thế chấp phương tiện giao thông vận tải đường bộ đã được cấp giấy chứng nhận đăng ký xe ô tô chính chủ. 
+D. Hợp đồng thế chấp các loại giấy tờ có giá do Agribank hoặc các tổ chức tín dụng uy tín khác phát hành theo quy định. 
+Đáp án: B
+Câu 53 (Điều 18). Khách hàng E thực hiện biện pháp cầm cố dây chuyền thiết bị cho Agribank. Thời điểm biện pháp cầm cố tài sản phát sinh hiệu lực đối kháng với người thứ ba được xác định là khi nào?
+A. Ngay tại thời điểm Hợp đồng cầm cố tài sản được ký kết hoàn tất bởi người đại diện theo pháp luật của các bên tham gia. 
+B. Từ thời điểm Agribank nắm giữ tài sản bảo đảm (trực tiếp quản lý, kiểm soát hoặc người khác quản lý nhưng Agribank vẫn kiểm soát). 
+C. Ngay tại thời điểm Agribank thực hiện giải ngân đợt vốn đầu tiên của khoản vay cho khách hàng theo hợp đồng tín dụng. 
+D. Sau 05 ngày làm việc kể từ ngày hoàn tất thủ tục đăng ký giao dịch bảo đảm tại Trung tâm Đăng ký giao dịch, tài sản. 
+Đáp án: B
+Câu 54 (Điều 20). Vợ chồng ông M và bà N có tài sản chung là một Động sản không thuộc diện phải đăng ký quyền sở hữu. Ông M tự mình xác lập Hợp đồng bảo đảm bằng động sản này tại Agribank. Giao dịch này có hợp pháp không?
+A. Không hợp pháp do tài sản chung của vợ chồng bắt buộc phải có chữ ký đồng ý của cả hai vợ chồng trên hợp đồng bảo đảm. 
+B. Hợp pháp, vì đối với động sản không phải đăng ký thì người đang chiếm hữu được tự mình xác lập hợp đồng bảo đảm (trừ khi có thỏa thuận khác). 
+C. Chỉ hợp pháp nếu ông M cung cấp được giấy ủy quyền có công chứng hợp lệ từ bà N cho chi nhánh Agribank nơi vay vốn. 
+D. Bắt buộc phải có sự xác nhận và chứng kiến của đại diện Ủy ban nhân dân cấp xã nơi hai vợ chồng đang đăng ký thường trú. 
+Đáp án: B
+Câu 55 (Điều 22). Khách hàng vay vốn bị tuyên bố Hợp đồng cấp tín dụng bị vô hiệu do vi phạm quy định pháp luật, tuy nhiên Agribank và khách hàng đã thực hiện giải ngân một phần khoản vay. Hợp đồng bảo đảm liên quan sẽ xử lý ra sao?
+A. Hợp đồng bảo đảm đương nhiên chấm dứt hiệu lực lập tức cùng với thời điểm hợp đồng cấp tín dụng bị tuyên vô hiệu. 
+B. Hợp đồng bảo đảm không chấm dứt, Agribank có quyền xử lý tài sản bảo đảm để thanh toán nghĩa vụ hoàn trả của khách hàng. 
+C. Tài sản bảo đảm lập tức bị phong tỏa và tịch thu sung công quỹ nhà nước theo quyết định xử lý chuyên lý của Tòa án. 
+D. Agribank phải hoàn trả lại tài sản bảo đảm cho khách hàng và chuyển toàn bộ dư nợ đã giải ngân thành khoản nợ không bảo đảm. 
+Đáp án: B
+Câu 56 (Điều 26). Trường hợp Agribank và bên cầm cố thỏa thuận giao tài sản cầm cố cho Bên thứ ba giữ, Bên thứ ba này phải đáp ứng các điều kiện BẮT BUỘC nào?
+A. Phải là một tổ chức tín dụng khác đang hoạt động hợp pháp trên cùng địa bàn tỉnh, thành phố với chi nhánh Agribank cho vay. 
+B. Phải là doanh nghiệp có vốn điều lệ tối thiểu từ 50 tỷ đồng trở lên và có kinh nghiệm hoạt động trong ngành ngân hàng tối thiểu 05 năm. 
+C. Phải được phép kinh doanh dịch vụ gửi giữ; đủ điều kiện bảo quản tài sản và việc gửi giữ phải lập thành hợp đồng giữa 3 bên. 
+D. Phải cam kết thực hiện nghĩa vụ bảo lãnh thanh toán thay cho khách hàng nếu tài sản gửi giữ bị suy giảm giá trị sử dụng. 
+Đáp án: C
+Câu 57 (Điều 33 & 34). Doanh nghiệp K đứng ra ký Thỏa thuận bảo lãnh cho khoản vay của Công ty con tại Agribank. Điều kiện về tài sản bảo đảm đối với Bên bảo lãnh (trừ TCTD, cơ quan quản lý Ngân sách Nhà nước) được quy định như thế nào?
+A. Bên bảo lãnh không bắt buộc phải có tài sản bảo đảm nếu có báo cáo tài chính năm trước đạt doanh thu trên 100 tỷ đồng. 
+B. Bên bảo lãnh (trừ TCTD, cơ quan quản lý Ngân sách Nhà nước) phải có năng lực pháp lý, tài chính và phải có tài sản bảo đảm. 
+C. Việc áp dụng tài sản bảo đảm cho nghĩa vụ bảo lãnh là tự nguyện, do Giám đốc chi nhánh Agribank xem xét quyết định riêng. 
+D. Tài sản bảo đảm của bên bảo lãnh bắt buộc phải là Tiền gửi tiết kiệm hoặc Giấy tờ có giá do Agribank trực tiếp phát hành. 
+Đáp án: B
+Câu 58 (Điều 36 & 37). Tổ chức chính trị - xã hội tại cơ sở (như Hội Nông dân, Hội Liên hiệp Phụ nữ xã) thực hiện bảo đảm bằng tín chấp cho đối tượng nào vay vốn tại Agribank?
+A. Các Doanh nghiệp nhỏ và vừa hoạt động trong lĩnh vực nông nghiệp công nghệ cao trên địa bàn quản lý của tổ chức đó. 
+B. Cá nhân, hộ gia đình nghèo vay một khoản tiền tại Agribank để sản xuất, kinh doanh, phục vụ nhu cầu đời sống hoặc tiêu dùng. 
+C. Tất cả các hộ gia đình sinh sống hợp pháp trên địa bàn xã không phân biệt mức thu nhập hay điều kiện kinh tế gia đình. 
+D. Các Hợp tác xã dịch vụ nông nghiệp được thành lập và hoạt động theo đúng quy định của Luật Hợp tác xã hiện hành. 
+Đáp án: B
+Câu 59 (Điều 41). Phương thức xử lý tài sản bảo đảm nào dưới đây khi thực hiện BẮT BUỘC phải được Hội đồng thành viên Agribank phê duyệt?
+A. Bán đấu giá tài sản bảo đảm thông qua tổ chức đấu giá tài sản chuyên nghiệp theo hợp đồng dịch vụ đấu giá tài sản. 
+B. Agribank tự bán tài sản bảo đảm trực tiếp cho bên mua trên thị trường tự do theo giá thỏa thuận giữa các bên liên quan. 
+C. Agribank nhận chính tài sản bảo đảm để thay thế cho việc thực hiện nghĩa vụ của bên bảo đảm phải được HĐTV phê duyệt. 
+D. Bán tài sản bảo đảm theo phương thức trả chậm, trả dần cho bên thứ ba có khả năng tài chính theo phương án được duyệt. 
+Đáp án: C
+Câu 60 (Điều 46). Quy chế bảo đảm trong hoạt động cấp tín dụng ban hành kèm theo Văn bản số 879/QC-HĐTV-TD có hiệu lực thi hành chính thức kể từ ngày nào?
+A. Chính thức có hiệu lực thi hành kể từ ngày 28 tháng 12 năm 2021. 
+B. Chính thức có hiệu lực thi hành kể từ ngày 01 tháng 01 năm 2022. 
+C. Chính thức có hiệu lực thi hành kể từ ngày 15 tháng 01 năm 2022. 
+D. Chính thức có hiệu lực thi hành kể từ ngày 01 tháng 07 năm 2022. 
+Đáp án: C
+Câu 61. Thời gian hoạt động hỗ trợ khách hàng qua kênh thoại của Trung tâm Chăm sóc khách hàng (TTCSKH) được quy định như thế nào?
+A. Hoạt động từ 08 giờ đến 17 giờ các ngày từ thứ 2 đến thứ 6.
+B. Hoạt động liên tục 24 giờ/ngày và 07 ngày/tuần (phục vụ 24/7). 
+C. Hoạt động từ 08 giờ đến 12 giờ vào các ngày nghỉ, Lễ, Tết.
+D. Hoạt động từ 06 giờ đến 22 giờ tất cả các ngày trong tuần.
+Đáp án đúng: B (Căn cứ Điều 5 - Khoản 2.1a) 
+Câu 62. Phù hợp với quy định tại Điều 5, thời hạn phản hồi khách hàng đối với Yêu cầu hỗ trợ (YCHT) trong phạm vi xử lý của TTCSKH qua kênh email là bao lâu?
+A. Thực hiện phản hồi trực tiếp ngay tại thời điểm tiếp nhận.
+B. Trong thời hạn 01 ngày làm việc kể từ thời điểm tiếp nhận. 
+C. Trong thời hạn 03 ngày làm việc kể từ thời điểm tiếp nhận.
+D. Trong thời hạn 05 ngày làm việc kể từ thời điểm tiếp nhận.
+Đáp án đúng: B (Căn cứ Điều 5 - Khoản 2.2a - ii) 
+Câu 63. Đối với các yêu cầu chuyển tiếp đến đơn vị có nội dung phức tạp, cần thời gian thẩm tra, xác minh hoặc khó khăn về giao thông, thời gian hẹn khách hàng tối đa là bao lâu?
+A. Không vượt quá 03 ngày làm việc kể từ khi tiếp nhận.
+B. Không vượt quá 05 ngày làm việc kể từ khi tiếp nhận.
+C. Không vượt quá 07 ngày làm việc kể từ khi tiếp nhận. 
+D. Không vượt quá 10 ngày làm việc kể từ khi tiếp nhận.
+Đáp án đúng: C (Căn cứ Điều 5 - Khoản 2.2b - i) 
+Câu 64. Trong công tác phối hợp xử lý Phiếu chuyển tiếp (PCT), thời gian hoàn thành kéo dài (nếu không kịp xử lý theo hạn gốc) được quy định không vượt quá bao nhiêu ngày làm việc?
+A. Không kéo dài quá 02 ngày làm việc so với hạn ban đầu.
+B. Không kéo dài quá 03 ngày làm việc so với hạn ban đầu. 
+C. Không kéo dài quá 05 ngày làm việc so với hạn ban đầu.
+D. Không kéo dài quá 07 ngày làm việc so với hạn ban đầu.
+Đáp án đúng: B (Căn cứ Điều 5 - Khoản 2.2b - iii) 
+Câu 65. Trường hợp chuyên viên chăm sóc hỗ trợ khách hàng (CVCSKH) liên hệ với khách hàng để trả lời kết quả nhưng không kết nối thành công bao nhiêu lần thì chuyển sang dự thảo thông báo qua email/SMS/OTT?
+A. Khi liên hệ không thành công sau 01 lần gọi điện thoại.
+B. Khi liên hệ không thành công sau 02 lần gọi điện thoại. 
+C. Khi liên hệ không thành công sau 03 lần gọi điện thoại.
+D. Khi liên hệ không thành công sau 04 lần gọi điện thoại.
+Đáp án đúng: B (Căn cứ Điều 7 - Khoản 1.1b - ii) 
+Câu 66. Đầu số hotline CSKH nào dưới đây được ưu tiên dành riêng cho nhóm Khách hàng VIP/ưu tiên?
+A. Hotline dành riêng số 1900558818.
+B. Hotline dành riêng số 02432053205.
+C. Hotline dành riêng số 1800282855. 
+D. Hotline dành riêng số 1900545486.
+Đáp án đúng: C (Căn cứ Điều 7 - Khoản 1.2a) 
+Câu 67. Khung thời gian thực hiện cuộc gọi ra (Outbound) liên hệ khách hàng qua kênh thoại (trừ trường hợp đặc thù) được quy định như thế nào?
+A. Thực hiện từ 8h00 - 12h00 và 13h00 - 17h00 các ngày trong tuần.
+B. Thực hiện từ 9h00 - 11h00 và 14h00 - 17h00 từ thứ 2 đến thứ 6. 
+C. Thực hiện từ 8h30 - 11h30 và 13h30 - 16h30 từ thứ 2 đến thứ 7.
+D. Thực hiện từ 9h00 - 12h00 và 13h30 - 17h30 từ thứ 2 đến thứ 6.
+Đáp án đúng: B (Căn cứ Điều 12 - Khoản 2.1a) 
+Câu 68. Số lần gọi ra tối đa đối với 01 khách hàng trong một chiến dịch Outbound qua kênh thoại (trừ các chiến dịch đặc thù) được quy định như thế nào?
+A. Liên hệ tối đa 01 lần trong toàn bộ chiến dịch.
+B. Tối đa 02 lần/chiến dịch (cách nhau tối thiểu 01 tiếng). 
+C. Tối đa 03 lần/chiến dịch (cách nhau tối thiểu 02 tiếng).
+D. Tối đa 04 lần/chiến dịch (cách nhau tối thiểu 04 tiếng).
+Đáp án đúng: B (Căn cứ Điều 12 - Khoản 2.1c) 
+Câu 69. Thời gian liên hệ lại khách hàng qua kênh thoại trong chiến dịch tiếp theo đối với các khách hàng đã liên hệ thành công trước đó tối thiểu là bao nhiêu ngày?
+A. Thời gian tối thiểu là 15 ngày tính từ cuộc gọi trước.
+B. Thời gian tối thiểu là 30 ngày tính từ cuộc gọi trước. 
+C. Thời gian tối thiểu là 45 ngày tính từ cuộc gọi trước.
+D. Thời gian tối thiểu là 60 ngày tính từ cuộc gọi trước.
+Đáp án đúng: B (Căn cứ Điều 12 - Khoản 2.1b) 
+Câu 70. Quy mô số lượng khách hàng tối thiểu đối với mỗi chiến dịch Outbound (trừ nhóm đặc thù) để đảm bảo hiệu quả triển khai là bao nhiêu?
+A. Đạt quy mô từ 100 khách hàng trở lên trên một chiến dịch.
+B. Đạt quy mô từ 500 khách hàng trở lên trên một chiến dịch.
+C. Đạt quy mô từ 1.000 khách hàng trở lên trên một chiến dịch. 
+D. Đạt quy mô từ 5.000 khách hàng trở lên trên một chiến dịch.
+Đáp án đúng: C (Căn cứ Điều 13 - Khoản 2.1c - ii) 
+Câu 71. Đối tượng Chi nhánh và kênh giao tiếp nào được TTCSKH hỗ trợ khi Chi nhánh có nhu cầu đề xuất triển khai chiến dịch Outbound?
+A. Hỗ trợ tất cả Chi nhánh triển khai qua cuộc gọi Kênh thoại.
+B. Hỗ trợ Chi nhánh loại I triển khai qua tin nhắn ứng dụng OTT. 
+C. Hỗ trợ Chi nhánh loại II triển khai qua dịch vụ SMS Brandname.
+D. Hỗ trợ tất cả Chi nhánh triển khai qua dịch vụ email tự động.
+Đáp án đúng: B (Căn cứ Điều 12 - Khoản 1.2) 
+Câu 72. Thời hạn TTCSKH phải hoàn thành cập nhật, biên tập nội dung mới hoặc thay đổi liên quan đến sản phẩm dịch vụ thông thường vào chương trình KB là bao lâu?
+A. Hoàn thành cập nhật trong vòng 12 giờ làm việc.
+B. Hoàn thành trong 01 ngày (phức tạp không quá 03 ngày). 
+C. Hoàn thành cập nhật trong vòng 05 ngày làm việc.
+D. Hoàn thành cập nhật trong vòng 07 ngày làm việc.
+Đáp án đúng: B (Căn cứ Điều 17 - Khoản 1.1c - i) 
+Câu 73. Dịch vụ ứng dụng AI nào thực hiện chấm điểm tự động các cuộc gọi dựa trên bộ tiêu chí đã thiết lập để phục vụ kiểm soát chất lượng?
+A. Sử dụng dịch vụ Voicebot tự động.
+B. Sử dụng dịch vụ Chatbot thông minh.
+C. Sử dụng dịch vụ Csatbot đánh giá.
+D. Sử dụng dịch vụ Enhancebot phân tích. 
+Đáp án đúng: D (Căn cứ Điều 2 - Khoản 27 & Điều 19 - Khoản 3.1a - i) 
+Câu 74. Dịch vụ ứng dụng AI nào có nhiệm vụ tự động gọi ra cho khách hàng để thu thập, đo lường và đánh giá mức độ hài lòng đối với dịch vụ?
+A. Ứng dụng dịch vụ Chatbot.
+B. Ứng dụng dịch vụ Csatbot. 
+C. Ứng dụng dịch vụ Enhancebot.
+D. Ứng dụng dịch vụ Voicebot.
+Đáp án đúng: B (Căn cứ Điều 2 - Khoản 28 & Điều 19 - Khoản 3.1b - i) 
+Câu 75. Khách hàng gọi điện đến tổng đài nhưng không kết nối được với CVCSKH trong khung giờ nào hàng ngày sẽ thuộc trường hợp được xem xét gọi ra hỗ trợ lại?
+A. Phát sinh cuộc gọi nhỡ từ 12 giờ đến 13 giờ hàng ngày.
+B. Phát sinh cuộc gọi nhỡ từ 17 giờ đến 20 giờ hàng ngày.
+C. Phát sinh cuộc gọi nhỡ từ 00 giờ đến 05 giờ hàng ngày. 
+D. Phát sinh cuộc gọi nhỡ từ 22 giờ đến 24 giờ hàng ngày.
+Đáp án đúng: C (Căn cứ Điều 10 - Khoản 1.2) 
+Câu 76. Yêu cầu hỗ trợ nào sau đây của khách hàng KHÔNG cần thực hiện quy trình định danh khi tiếp nhận?
+A. Khách hàng yêu cầu hỗ trợ khóa hoặc mở khóa thẻ ATM.
+B. Khách hàng yêu cầu cấp lại mật khẩu Ngân hàng điện tử.
+C. Khách hàng hỏi thông tin chung về sản phẩm, dịch vụ. 
+D. Khách hàng yêu cầu tra cứu thông tin số dư tài khoản.
+Đáp án đúng: C (Căn cứ Phụ lục I - Mục 2.1) 
+Câu 77. Để thực hiện định danh Khách hàng tổ chức (không gồm hộ kinh doanh) qua kênh thoại, CVCSKH/Voicebot cần thu thập bao nhiêu thông tin bắt buộc?
+A. Thu thập 02 thông tin bắt buộc (sử dụng tối đa 03 câu hỏi).
+B. Thu thập 03 thông tin bắt buộc (sử dụng tối đa 04 câu hỏi).
+C. Thu thập 04 thông tin bắt buộc (sử dụng tối đa 06 câu hỏi). 
+D. Thu thập 05 thông tin bắt buộc (sử dụng tối đa 07 câu hỏi).
+Đáp án đúng: C (Căn cứ Phụ lục I - Mục 3.2) 
+Câu 78. Số lượng thông tin bổ sung tối thiểu cần thu thập khi thực hiện quy trình định danh khách hàng qua kênh thoại được quy định như thế nào?
+A. Cần thu thập tối thiểu 01 thông tin (sử dụng tối đa 03 câu hỏi).
+B. Cần thu thập tối thiểu 02 thông tin (sử dụng tối đa 05 câu hỏi). 
+C. Cần thu thập tối thiểu 03 thông tin (sử dụng tối đa 06 câu hỏi).
+D. Cần thu thập tối thiểu 04 thông tin (sử dụng tối đa 07 câu hỏi).
+Đáp án đúng: B (Căn cứ Phụ lục I - Mục 3.3) 
+Câu 79. Việc lưu trữ dữ liệu thông tin giao tiếp của khách hàng qua các kênh hỗ trợ được TTCSKH bắt đầu thực hiện từ thời điểm nào?
+A. Bắt đầu lưu trữ kể từ khi khách hàng có yêu cầu ghi âm.
+B. Bắt đầu từ khi kết nối cho đến khi hoàn thành hỗ trợ. 
+C. Chỉ thực hiện lưu trữ với các cuộc gọi khiếu nại, tra soát.
+D. Bắt đầu lưu trữ khi phát sinh các sự cố về giao dịch.
+Đáp án đúng: B (Căn cứ Điều 3 - Khoản 3) 
+Câu 80. Thời hạn NKS phải hoàn thành lập báo cáo đánh giá kết quả cho từng chiến dịch Outbound kể từ ngày kết thúc chiến dịch là bao lâu?
+A. Hoàn thành báo cáo trong thời hạn 07 ngày làm việc.
+B. Hoàn thành báo cáo trong thời hạn 15 ngày làm việc.
+C. Hoàn thành báo cáo trong thời hạn 30 ngày làm việc. 
+D. Hoàn thành báo cáo trong thời hạn 45 ngày làm việc.
+Đáp án đúng: C (Căn cứ Điều 13 - Khoản 3.3a) 
+Câu 81. Trong định hướng triển khai Kế hoạch "Bình dân học vụ số", nhiệm vụ trọng tâm được giao cho nhóm đối tượng là "Lãnh đạo cấp cao" (Chủ tịch, Thành viên HĐTV, Tổng Giám đốc, các Phó TGĐ...) là gì?
+A. Trực tiếp thực hiện thao tác kỹ thuật, vận hành hạ tầng mạng, quản trị hệ thống E-Learning và xử lý hồ sơ công việc thường nhật trên môi trường số. 
+B. Nâng cao kiến thức, kỹ năng làm việc số nhằm hỗ trợ công tác chỉ đạo, điều hành, hoạch định chiến lược, cơ chế, chính sách, quy chế về chuyển đổi số, ngân hàng số và dẫn dắt quá trình số hóa. 
+C. Tập trung nghiên cứu phát triển các phần mềm ứng dụng nội bộ, triển khai mô hình cầm tay chỉ việc cho cán bộ thừa hành và viết kịch bản truyền thông. 
+D. Tổ chức các điểm giao dịch lưu động tại vùng sâu vùng xa để hướng dẫn người dân mở tài khoản trực tuyến và sử dụng ứng dụng Agribank Digital. 
+Đáp án đúng: B (Căn cứ Mục I.3.1a Kế hoạch kèm Quyết định 563) 
+Câu 82. Nội dung đào tạo ở Cấp độ Nâng cao trong Kế hoạch triển khai Chương trình "Bình dân học vụ số" tập trung vào những mảng kiến thức chuyên sâu nào dưới đây?
+A. Tổng quan về khái niệm chuyển đổi số, nhận thức cơ bản về công dân số, các thao tác sử dụng máy tính văn phòng và kỹ năng an toàn thông tin cá nhân cơ bản. 
+B. Hướng dẫn bật tắt thiết bị thông minh, cài đặt các ứng dụng mạng xã hội thông thường và quy trình đăng ký tài khoản email cá nhân. 
+C. Chuyển đổi số ngành ngân hàng - chiến lược và thực tiễn, quản lý và khai thác dữ liệu, ứng dụng công nghệ số trong chuyên môn, kỹ năng quản trị số, tư duy Agile, tinh gọn và linh hoạt. 
+D. Kỹ năng soạn thảo văn bản hành chính truyền thống, lưu trữ hồ sơ giấy tại kho lưu trữ và quy trình kiểm đếm tiền mặt tại quầy giao dịch. 
+Đáp án đúng: C (Căn cứ Mục I.3.2b Kế hoạch kèm Quyết định 563) 
+Câu 83. Một trong những giải pháp quan trọng về việc ứng dụng công nghệ và nền tảng số, AI được nêu tại Kế hoạch kèm theo Quyết định 563 là gì?
+A. Tăng cường mua sắm các thiết bị phần cứng truyền thống, mở rộng diện tích kho lưu trữ tài liệu giấy tại 100% chi nhánh loại I và loại II. 
+B. Nâng cấp các quầy giao dịch truyền thống sang giao dịch hiện đại, đa điểm chạm, chú trọng trải nghiệm khách hàng, tối giản giấy tờ, thủ tục rườm rà, tiết kiệm thời gian. 
+C. Hạn chế kết nối Internet tại các quầy giao dịch để bảo đảm an toàn thông tin tuyệt đối cho dữ liệu khách hàng. 
+D. Yêu cầu toàn bộ khách hàng bắt buộc phải đến trực tiếp quầy giao dịch để thực hiện các giao dịch tra cứu thông tin số dư. 
+Đáp án đúng: B (Căn cứ Mục II.3 Kế hoạch kèm Quyết định 563) 
+Câu 84. Để tạo nguồn động lực và thu hút nguồn nhân lực chất lượng cao, Kế hoạch 563 quy định chính sách đối với lực lượng nòng cốt “Đại sứ số” và “Hạt nhân số” như thế nào?
+A. Yêu cầu làm việc hoàn toàn tự nguyện, không áp dụng bất kỳ hình thức đãi ngộ hay ưu tiên nào trong quá trình công tác tại đơn vị. 
+B. Xây dựng cơ chế đãi ngộ, chế độ tiền lương, thưởng, môi trường làm việc và cơ hội thăng tiến nhằm thu hút, khuyến khích cán bộ có trình độ công nghệ tham gia. 
+C. Chỉ thực hiện khen thưởng bằng bằng khen vào dịp tổng kết cuối năm mà không gắn liền với các quyền lợi về lương hay quy hoạch cán bộ. 
+D. Luân chuyển bắt buộc toàn bộ nhóm này về làm việc cố định tại Trung tâm CNTT Trụ sở chính trong thời hạn 05 năm. 
+Đáp án đúng: B (Căn cứ Mục II.2 Kế hoạch kèm Quyết định 563) 
+Câu 85. Theo Phụ lục Danh mục nhiệm vụ trọng tâm, dự kiến thời gian hoàn thành nhiệm vụ "Nâng cấp hệ thống E-Learning từ nền tảng nội bộ sang nền tảng Điện toán đám mây" là khi nào và do đơn vị nào chủ trì?
+A. Hoàn thành trong Tháng 6/2025; do Trường Đào tạo cán bộ đầu mối thực hiện. 
+B. Hoàn thành trong Quý III/2025; do Ban Ngân hàng số đầu mối thực hiện. 
+C. Hoàn thành trong Quý II/2026; do Trung tâm Công nghệ thông tin đầu mối thực hiện. 
+D. Hoàn thành trong Quý IV/2026; do Ban Công nghệ đầu mối thực hiện. 
+Đáp án đúng: C (Căn cứ Phụ lục STT 4 Kế hoạch kèm Quyết định 563) 
+Câu 86. Trách nhiệm của Ban Định chế tài chính trong việc tổ chức thực hiện Chương trình "Bình dân học vụ số" bao gồm những nội dung chính nào?
+A. Trực tiếp biên soạn giáo trình giảng dạy E-Learning và quản trị kỹ thuật hệ thống máy chủ đào tạo trực tuyến. 
+B. Đầu mối phối hợp với Trường ĐTCB làm việc với các tổ chức quốc tế, ngân hàng nước ngoài để đề nghị tài trợ, hỗ trợ kỹ thuật, chuyển giao mô hình đào tạo và cung cấp kinh nghiệm quốc tế. 
+C. Xây dựng bộ tiêu chí chấm điểm thi đua hàng năm cho các Chi nhánh Loại I và Loại II trong toàn hệ thống. 
+D. Triển khai các xe giao dịch lưu động đến các khu vực nông thôn, vùng sâu vùng xa để hướng dẫn người dân mở tài khoản. 
+Đáp án đúng: B (Căn cứ Mục III.1.7 Kế hoạch kèm Quyết định 563) 
+Câu 87. Vai trò và nhiệm vụ cốt lõi của lực lượng “Đại sứ số” và “Hạt nhân số” tại các đơn vị cơ sở được quy định như thế nào?
+A. Thay thế hoàn toàn Ban Giám đốc chi nhánh trong việc phê duyệt các khoản vay và thẩm định hồ sơ tín dụng trên môi trường số. 
+B. Nâng cao kiến thức số, hướng dẫn, hỗ trợ, huấn luyện, lan tỏa công cụ, kỹ năng, tư duy số tới đồng nghiệp và khách hàng, dẫn dắt sự thay đổi số và là cầu nối giữa lãnh đạo với người lao động. 
+C. Chịu trách nhiệm độc lập trong việc bảo trì toàn bộ hệ thống hạ tầng mạng và phần cứng máy tính tại các Phòng giao dịch trực thuộc. 
+D. Chuyên trách công tác kiểm tra, giám sát tuân thủ kỷ luật lao động và chấm công hàng ngày cho cán bộ tại đơn vị. 
+Đáp án đúng: B (Căn cứ Mục III.1.10 Kế hoạch kèm Quyết định 563) 
+Câu 88. Kế hoạch triển khai Chương trình "Bình dân học vụ số" đặt ra yêu cầu gì đối với 100% các tổ chức Đảng cơ sở, chi bộ và đơn vị trực thuộc Agribank?
+A. Tổ chức thi công khai bài thi trắc nghiệm công nghệ thông tin vào mỗi buổi sáng trước giờ giao dịch. 
+B. Quán triệt 100% các đảng bộ cơ sở, chi bộ và đơn vị triển khai chuyên đề “Đảng viên tiên phong đổi mới sáng tạo, học tập kỹ năng số” phù hợp với đặc thù đơn vị. 
+C. Yêu cầu mỗi đảng viên phải tự viết ít nhất 05 phần mềm ứng dụng công nghệ thông tin trong một năm. 
+D. Bắt buộc 100% đảng viên phải chuyển sang làm việc trực tuyến hoàn toàn tại nhà 02 ngày mỗi tuần. 
+Đáp án đúng: B (Căn cứ Mục III.1.9 Kế hoạch kèm Quyết định 563) 
+Câu 89. Nhằm thúc đẩy văn hóa tự học và lan tỏa phong trào thi đua số hóa, Agribank định hướng phát động các phong trào thi đua theo chủ đề nào dưới đây?
+A. “Thực hành tiết kiệm giấy tờ”, “Giao dịch nhanh - Phục vụ tốt”, “Mỗi ngày một sáng kiến kinh doanh”. 
+B. “Mỗi quý một kỹ năng số”, “Gương sáng số hóa”, “Kinh nghiệm học số hay”, “Mẹo công nghệ hữu ích”. 
+C. “Tăng cường huy động vốn số”, “Tín dụng xanh - Số hóa nhanh”, “Phát triển mảng dịch vụ bán lẻ”. 
+D. “Nâng cao chất lượng Phục vụ”, “An toàn giao dịch thẻ”, “Chuyển đổi số toàn diện chi nhánh”. 
+Đáp án đúng: B (Căn cứ Mục II.4 Kế hoạch kèm Quyết định 563) 
+Câu 90. Trách nhiệm của Ban Tài chính kế toán trong việc đảm bảo nguồn lực triển khai Kế hoạch "Bình dân học vụ số" được quy định cụ thể như thế nào?
+A. Trực tiếp đứng ra thanh toán toàn bộ chi phí học tập cá nhân cho người lao động khi đăng ký các khóa học công nghệ bên ngoài. 
+B. Phối hợp với các đơn vị liên quan trình cấp có thẩm quyền sửa đổi, bổ sung định mức chi tiêu trong hoạt động đào tạo, phê duyệt nguồn kinh phí phù hợp theo Quy chế tài chính của Agribank. 
+C. Cắt giảm 50% ngân sách đào tạo truyền thống để dồn toàn bộ nguồn lực tài chính cho việc mua sắm bản quyền phần mềm AI. 
+D. Ủy quyền hoàn toàn cho Giám đốc các Chi nhánh loại I tự quyết định định mức chi tài chính cho hoạt động đào tạo số mà không cần thông qua Trụ sở chính. 
+Đáp án đúng: B (Căn cứ Mục III.1.8 Kế hoạch kèm Quyết định 563) 
+Câu 91: Sổ tay hướng dẫn danh mục Sản phẩm dịch vụ đối với Khách hàng doanh nghiệp năm 2026 được ban hành kèm theo văn bản chính thức nào của Agribank?
+A. Văn bản số 5925/NHNo-KHDN ban hành ngày 31 tháng 12 năm 2025
+B. Văn bản số 5925/NHNo-KHDN ban hành ngày 15 tháng 01 năm 2026
+C. Quyết định số 4590/QĐ-NHNo-KHDN ban hành ngày 31 tháng 12 năm 2025
+D. Văn bản số 2963/NHNo-KHDN ban hành ngày 13 tháng 02 năm 2026
+Đáp án đúng: A
+Câu 92: Đơn vị Trụ sở chính nào có nhiệm vụ đóng vai trò là đầu mối phối hợp theo dõi các thay đổi về SPDV đối với KHDN và tiếp nhận các đề xuất, kiến nghị từ Chi nhánh để tổng hợp theo Văn bản 5925/NHNo-KHDN?
+A. Ban Chính sách Tín dụng Trụ sở chính
+B. Ban Định chế Tài chính Trụ sở chính
+C. Ban Khách hàng doanh nghiệp Trụ sở chính
+D. Trung tâm Ngân hàng số Trụ sở chính
+Đáp án đúng: C
+Câu 93: Các đơn vị tại Trụ sở chính phải phối hợp đánh giá, sửa đổi, bổ sung các tính năng SPDV thuộc phạm vi quản lý và gửi về Ban KHDN trước các mốc thời gian quy định nào hằng năm?
+A. Thực hiện gửi báo cáo đánh giá trước ngày 30/6 và ngày 31/12 hằng năm
+B. Thực hiện gửi báo cáo đánh giá trước ngày 10/7 và ngày 10/12 hằng năm
+C. Thực hiện gửi báo cáo đánh giá trước ngày 15/5 và ngày 15/11 hằng năm
+D. Thực hiện gửi báo cáo đánh giá trước ngày 01/7 và ngày 01/12 hằng năm
+Đáp án đúng: B
+Câu 94: Văn bản hướng dẫn triển khai sản phẩm Tiền gửi đầu tư tự động linh hoạt dành cho Bảo hiểm Xã hội (BHXH) được sửa đổi, bổ sung bởi văn bản nào sau đây theo Phụ lục tham chiếu 2026?
+A. Văn bản số 7250/NHNo-KHDN ban hành ngày 04/7/2023
+B. Văn bản số 7065/NHNo-KHDN ban hành ngày 27/5/2025
+C. Quy định số 2828/QyĐ-NHNo-ALCO ban hành ngày 01/8/2025
+D. Quyết định số 3446/QyĐ-NHNo-TCKT ban hành ngày 30/9/2025
+Đáp án đúng: B
+Câu 95: Văn bản số 4590/QĐ-NHNo-KHDN ban hành ngày 31/12/2025 quy định về nội dung cụ thể nào trong mảng Cho vay đối với Khách hàng doanh nghiệp?
+A. Hướng dẫn nghiệp vụ cấp tín dụng đối với chuỗi giá trị trong lĩnh vực sản xuất và kinh doanh ô tô
+B. Quy định về việc cấp tín dụng đối với dự án đầu tư trong khu công nghiệp, cụm công nghiệp/khu công nghệ cao
+C. Hướng dẫn chi tiết chương trình cho vay phát triển ngành công nghiệp hỗ trợ
+D. Quy định về cho vay bù đắp tài chính đối với các dự án đầu tư phát triển
+Đáp án đúng: B
+Câu 96: Văn bản quy định về "Bảo lãnh dự thầu điện tử kết nối với mạng đấu thầu quốc gia (e-GP)" áp dụng trong toàn hệ thống có số hiệu và ngày ban hành là:
+A. Quy trình số 3448/QTr-NHNo-TTTM ban hành ngày 01/10/2025
+B. Quy định số 4558/QyĐ-NHNo-KHDN ban hành ngày 30/12/2025
+C. Văn bản số 10303/NHNo-PCRT ban hành ngày 21/7/2025
+D. Văn bản số 18427/NHNo-TTTT ban hành ngày 28/11/2025
+Đáp án đúng: B
+Câu 97: Văn bản số 3352/NHNo-TTTT ban hành ngày 03/3/2026 triển khai chức năng cảnh báo trạng thái tài khoản người nhận có dấu hiệu nghi ngờ gian lận, lừa đảo trực tiếp trên hệ thống nào?
+A. Hệ thống xử lý thanh toán Payment Hub
+B. Hệ thống Thanh toán tập trung toàn hệ thống
+C. Hệ thống Quản trị Ngân hàng lõi IPCAS
+D. Hệ thống Kênh giao dịch Ngân hàng điện tử eBanking
+Đáp án đúng: C
+Câu 98: Trong mảng dịch vụ Thẻ, Văn bản số 1995/NHNo-TTT ngày 04/02/2026 do Tổng Giám đốc phê duyệt ban hành hướng dẫn nghiệp vụ nào?
+A. Triển khai mở rộng dịch vụ chấp nhận thanh toán Tap to Phone (SoftPOS) liên kết với Napas
+B. Hướng dẫn triển khai công tác phát hành thẻ ghi nợ nội địa trên chương trình quản lý thẻ CPS
+C. Triển khai dịch vụ chấp nhận thanh toán dành riêng cho dòng thẻ quốc tế MasterCard Corporate
+D. Ban hành biểu phí và hướng dẫn thu phí phát hành đối với các sản phẩm thẻ doanh nghiệp
+Đáp án đúng: B
+Câu 99: Văn bản số 2963/NHNo-KHDN ban hành ngày 13/02/2026 chính thức triển khai chương trình ưu đãi nào sau đây dành cho Khách hàng doanh nghiệp?
+A. Chương trình ưu đãi tổng thể "Chuyển đổi bứt phá – Nâng tầm doanh nghiệp"
+B. Chương trình chính sách ưu đãi đặc thù dành cho các tổ chức Đảng khi mở tài khoản thanh toán
+C. Chương trình ưu đãi "Mở tài khoản – Xuân gắn kết – Tết lộc tài" nhân dịp đầu năm 2026
+D. Chương trình thi đua "Thúc đẩy tăng trưởng Khách hàng Doanh nghiệp FDI năm 2026"
+Đáp án đúng: C
+Câu 100: Số dư tối thiểu bằng Đồng Việt Nam (VND) quy định đối với tài khoản thanh toán của Khách hàng tổ chức tại Agribank là bao nhiêu?
+A. Mức số dư duy trì tối thiểu là 500.000 đồng (Năm trăm nghìn đồng)
+B. Mức số dư duy trì tối thiểu là 1.000.000 đồng (Một triệu đồng)
+C. Mức số dư duy trì tối thiểu là 2.000.000 đồng (Hai triệu đồng)
+D. Mức số dư duy trì tối thiểu là 5.000.000 đồng (Năm triệu đồng)
+Đáp án đúng: B
+Câu 101: Đối với tài khoản thanh toán mở bằng phương tiện điện tử dành cho Khách hàng doanh nghiệp, quy định về đồng tiền giao dịch áp dụng như thế nào?
+A. Khách hàng được tùy chọn mở và giao dịch bằng VND hoặc các loại ngoại tệ tự do chuyển đổi
+B. Quy định bắt buộc chỉ áp dụng đồng tiền giao dịch duy nhất là Đồng Việt Nam (VND)
+C. Khách hàng có thể thực hiện giao dịch bằng các đồng tiền phổ biến gồm VND, USD và EUR
+D. Áp dụng cho Đồng Việt Nam và tất cả các loại ngoại tệ mà Agribank đang thực hiện giao dịch
+Đáp án đúng: B
+Câu 102: Trong sản phẩm "Tiền gửi rút gốc linh hoạt" tại quầy, khi khách hàng tổ chức thực hiện rút tiền một phần hoặc đóng tài khoản trước hạn, quy định về nghĩa vụ thông báo trước cho Agribank là gì?
+A. Phải thực hiện thông báo bằng văn bản chính thức cho Agribank trước ít nhất 02 ngày làm việc
+B. Có thể thông báo qua các kênh gián tiếp như điện thoại hoặc email trước thời điểm giao dịch 12 giờ
+C. Phải thực hiện thông báo bằng văn bản cho Agribank nơi giao dịch trước ngày rút tiền tối thiểu 01 ngày làm việc
+D. Không bắt buộc phải thông báo trước, hệ thống tự động xử lý ngay tại thời điểm khách hàng yêu cầu giao dịch
+Đáp án đúng: C
+Câu 103: Khách hàng doanh nghiệp tham gia sản phẩm "Tiền gửi rút gốc linh hoạt" tại quầy sẽ bị áp dụng thu phí đóng sớm trong trường hợp nào?
+A. Khi khách hàng thực hiện yêu cầu đóng tài khoản tiền gửi trước khi trải qua 1/2 kỳ hạn gửi theo hợp đồng
+B. Khi số ngày gửi tiền thực tế tính từ ngày mở tài khoản nhỏ hơn 03 ngày
+C. Khi số ngày gửi tiền thực tế tính từ ngày mở tài khoản nhỏ hơn 07 ngày
+D. Khi khách hàng thực hiện các giao dịch rút tiền trước hạn vượt quá 3 lần trong cùng một kỳ hạn gửi
+Đáp án đúng: B
+Câu 104: Mức số dư tối thiểu bắt buộc duy trì trên Tài khoản thanh toán do khách hàng đăng ký khi tham gia sản phẩm "Tiền gửi đầu tư tự động" (Mã 69Z) quy định không được thấp hơn bao nhiêu?
+A. Quy định số dư duy trì tối thiểu trên TKTT không được thấp hơn 100.000.000 VND
+B. Quy định số dư duy trì tối thiểu trên TKTT không được thấp hơn 500.000.000 VND
+C. Quy định số dư duy trì tối thiểu trên TKTT không được thấp hơn 1.000.000.000 VND
+D. Quy định số dư duy trì tối thiểu trên TKTT không được thấp hơn 2.000.000.000 VND
+Đáp án đúng: C
+Câu 105: Đối với sản phẩm "Tiền gửi đầu tư tự động linh hoạt dành cho BHXH Việt Nam", số dư trên TKTT vượt mức sàn bao nhiêu và phần vượt từ bao nhiêu trở lên thì hệ thống tự động chuyển sang tài khoản tiền gửi?
+A. Duy trì mức số dư sàn 100 tỷ đồng, phần vượt từ 500 triệu đồng trở lên sẽ tự động chuyển gửi
+B. Duy trì mức số dư sàn 200 tỷ đồng, phần vượt từ 01 tỷ đồng trở lên sẽ tự động chuyển gửi
+C. Duy trì mức số dư sàn 500 tỷ đồng, phần vượt từ 02 tỷ đồng trở lên sẽ tự động chuyển gửi
+D. Duy trì mức số dư sàn 200 tỷ đồng, phần vượt từ 100 triệu đồng trở lên sẽ tự động chuyển gửi
+Đáp án đúng: B
+Câu 106: Tài khoản "Tiền gửi đầu tư tự động linh hoạt dành cho BHXH Việt Nam" trong trường hợp rút tiền đúng hạn sẽ được hệ thống tự động đóng vào mốc thời gian nào vào ngày đến hạn?
+A. Hệ thống tự động xử lý đóng tài khoản trước 17 giờ 00 phút chiều của ngày đến hạn
+B. Hệ thống tự động xử lý đóng tài khoản trước 12 giờ 00 phút trưa của ngày đến hạn
+C. Hệ thống tự động xử lý đóng tài khoản trước 10 giờ 00 phút sáng của ngày đến hạn
+D. Hệ thống tự động xử lý đóng tài khoản ngay tại thời điểm 0 giờ 00 phút của ngày đến hạn
+Đáp án đúng: C
+Câu 107: Quy định về cấu trúc tài khoản số "đẹp" dành cho Khách hàng doanh nghiệp tại Agribank bao gồm bao nhiêu chữ số và các chữ số đầu được quy định như thế nào?
+A. Cấu trúc gồm 10 chữ số, trong đó 3 chữ số đầu tiên là mã chi nhánh quản lý tài khoản
+B. Cấu trúc gồm 12 chữ số, trong đó 4 chữ số đầu tiên là mã chi nhánh quản lý tài khoản
+C. Cấu trúc gồm 13 chữ số, trong đó 04 chữ số đầu tiên là mã chi nhánh cố định
+D. Cấu trúc gồm 15 chữ số, trong đó 5 chữ số đầu tiên là mã chi nhánh quản lý tài khoản
+Đáp án đúng: C
+Câu 108: Mức số dư tối thiểu quy định đối với sản phẩm "Tiền gửi có kỳ hạn lãi sau toàn bộ" bằng ngoại tệ USD và EUR dành cho Khách hàng doanh nghiệp là bao nhiêu?
+A. Quy định mức số dư tiền gửi tối thiểu là 100 USD đối với đồng Đô la Mỹ hoặc 100 EUR đối với đồng Euro
+B. Quy định mức số dư tiền gửi tối thiểu là 500 USD đối với đồng Đô la Mỹ hoặc 500 EUR đối với đồng Euro
+C. Quy định mức số dư tiền gửi tối thiểu là 1.000 USD đối với đồng Đô la Mỹ hoặc 1.000 EUR đối với đồng Euro
+D. Quy định mức số dư tiền gửi tối thiểu là 2.000 USD đối với đồng Đô la Mỹ hoặc 2.000 EUR đối với đồng Euro
+Đáp án đúng: B
+Câu 109: Khi khách hàng tổ chức rút tiền trước hạn đối với sản phẩm "Tiền gửi có kỳ hạn lãi sau định kỳ", Agribank sẽ xử lý khoản tiền lãi đã chi trả ở các kỳ trước đó như thế nào?
+A. Giữ nguyên khoản tiền lãi đã chi trả ở các kỳ trước, ngân hàng chỉ thực hiện tính lại tiền lãi của kỳ hiện tại
+B. Thu hồi lại toàn bộ khoản tiền lãi đã chi trả (nếu có) và áp dụng mức lãi suất rút trước hạn cho toàn bộ thời gian gửi
+C. Thực hiện khấu trừ 50% tổng số tiền lãi đã chi trả trước đó trực tiếp vào phần tiền gốc tiền gửi của khách hàng
+D. Áp dụng mức phí phạt vi phạm cam kết tương đương 10% tính trên tổng số tiền lãi mà khách hàng đã thực nhận
+Đáp án đúng: B
+Câu 110: Đối với sản phẩm "Tiền gửi tích lũy" dành cho KHDN, quy định về thời điểm khách hàng thực hiện lần gửi tiền tích lũy cuối cùng trước ngày đến hạn của tài khoản là khi nào?
+A. Lần gửi sau cùng phải thực hiện trước ngày đến hạn của tài khoản tiền gửi tối thiểu 07 ngày
+B. Lần gửi sau cùng phải thực hiện trước ngày đến hạn của tài khoản tiền gửi tối thiểu 15 ngày
+C. Lần gửi sau cùng phải thực hiện trước ngày đến hạn của tài khoản tiền gửi tối thiểu một (01) tháng
+D. Khách hàng có thể thực hiện gửi tiền tích lũy vào bất kỳ thời điểm nào cho đến trước giờ đóng cửa của ngày đến hạn
+Đáp án đúng: C
+Câu 111: Mức lãi suất áp dụng đối với sản phẩm "Tiền gửi tích lũy" có thời hạn gửi từ 12 tháng đến dưới 24 tháng được quy định tối đa bằng mức lãi suất nào sau đây?
+A. Tối đa bằng mức lãi suất tiền gửi có kỳ hạn 3 tháng trả lãi cuối kỳ đang áp dụng
+B. Tối đa bằng mức lãi suất tiền gửi có kỳ hạn 6 tháng trả lãi cuối kỳ đang áp dụng
+C. Tối đa bằng mức lãi suất tiền gửi có kỳ hạn 12 tháng trả lãi cuối kỳ đang áp dụng
+D. Tối đa bằng mức lãi suất tiền gửi không kỳ hạn thấp nhất đang niêm yết
+Đáp án đúng: B
+Câu 112: Khách hàng tổ chức khi thực hiện đóng trước hạn tài khoản "Tiền gửi trực tuyến" sau khi đã qua kỳ tái tục sẽ được hưởng quyền lợi lãi suất như thế nào?
+A. Hưởng mức lãi suất không kỳ hạn cho toàn bộ thời gian gửi tiền tính từ ngày mở tài khoản ban đầu
+B. Hưởng mức lãi suất bằng 50% mức lãi suất tiền gửi có kỳ hạn đang áp dụng cho tài khoản
+C. Hưởng lãi suất không kỳ hạn tại thời điểm đóng tài khoản cho số dư tiền gửi và thời gian tính lãi kể từ ngày đến hạn kỳ liền trước đến hết ngày liền kề ngày đóng tài khoản
+D. Toàn bộ khoản tiền gửi trong kỳ tái tục sẽ không được ngân hàng tính và chi trả bất kỳ khoản lãi nào
+Đáp án đúng: C
+Câu 113: Khi tính toán tiền lãi Giấy tờ có giá (GTCG) thuộc hình thức trả lãi sau cuối kỳ, quy ước về số ngày trong một năm theo quy định hiện hành tại Agribank được tính là bao nhiêu ngày?
+A. Quy ước chuẩn một năm tính toán tiền lãi bao gồm 360 ngày
+B. Quy ước chuẩn một năm tính toán tiền lãi bao gồm 365 ngày
+C. Quy ước chuẩn một năm tính toán tiền lãi bao gồm 366 ngày
+D. Quy ước số ngày tính toán tiền lãi dựa trên số ngày thực tế phát sinh của từng năm cụ thể
+Đáp án đúng: B
+Câu 114: Mệnh giá tối thiểu đối với Giấy tờ có giá phát hành dành cho Khách hàng doanh nghiệp tại Agribank được quy định là bao nhiêu?
+A. Quy định mệnh giá phát hành tối thiểu là 100.000 VND (Một trăm nghìn đồng)
+B. Quy định mệnh giá phát hành tối thiểu là 1.000.000 VND (Một triệu đồng)
+C. Quy định mệnh giá phát hành tối thiểu là 10.000.000 VND (Mười triệu đồng)
+D. Quy định mệnh giá phát hành tối thiểu là 50.000.000 VND (Năm mươi triệu đồng)
+Đáp án đúng: A
+Câu 115: Trong trường hợp Giấy tờ có giá là Trái phiếu chưa lưu ký, đơn vị công ty chứng khoán (CTCK) phải thực hiện thủ tục nào sau đây tại Trụ sở chính Agribank để nhận tiền thanh toán gốc và lãi?
+A. Thực hiện nộp khoản tiền ký quỹ bảo đảm bằng 5% tổng giá trị thanh toán gốc và lãi
+B. Thực hiện thủ tục mở tài khoản thanh toán tại Trụ sở chính (Cân đối 1000) để tiếp nhận tiền thanh toán
+C. Đăng ký và nộp văn bản ủy quyền riêng có xác nhận của Tổng Giám đốc Agribank
+D. Thực hiện thủ tục mở tài khoản chuyên dùng tại Chi nhánh Agribank nơi trực tiếp phát hành trái phiếu
+Đáp án đúng: B
+Câu 116: Thời hạn bắt đầu áp dụng việc hạn chế người sở hữu trái phiếu yêu cầu đăng ký chuyển nhượng quyền sở hữu trước ngày thanh toán gốc/lãi được quy định là bao nhiêu ngày làm việc?
+A. Giới hạn không tiếp nhận yêu cầu chuyển nhượng trước ngày thanh toán tối thiểu 03 ngày làm việc
+B. Giới hạn không tiếp nhận yêu cầu chuyển nhượng trước ngày thanh toán tối thiểu 05 ngày làm việc
+C. Giới hạn không tiếp nhận yêu cầu chuyển nhượng trước 07 ngày làm việc của ngày thanh toán
+D. Giới hạn không tiếp nhận yêu cầu chuyển nhượng trước ngày thanh toán tối thiểu 10 ngày làm việc
+Đáp án đúng: C
+Câu 117: Sản phẩm "Tiền gửi rút gốc linh hoạt trực tuyến" (TGRGLHTT) dành cho KHDN quy định mức số tiền gửi tối thiểu khi mở và số tiền rút gốc tối thiểu mỗi lần lần lượt là bao nhiêu?
+A. Quy định số tiền gửi ban đầu tối thiểu là 50.000.000 VND và số tiền rút gốc mỗi lần tối thiểu là 5.000.000 VND
+B. Quy định số tiền gửi ban đầu tối thiểu là 10.000.000 VND và số tiền rút gốc mỗi lần tối thiểu là 1.000.000 VND
+C. Quy định số tiền gửi ban đầu tối thiểu là 20.000.000 VND và số tiền rút gốc mỗi lần tối thiểu là 2.000.000 VND
+D. Quy định số tiền gửi ban đầu tối thiểu là 100.000.000 VND và số tiền rút gốc mỗi lần tối thiểu là 10.000.000 VND
+Đáp án đúng: B
+Câu 118: Sản phẩm "Tiền gửi trả lãi sau định kỳ trực tuyến" (TGTLSĐKTT) triển khai trên kênh eBanking cho phép khách hàng chủ động lựa chọn các định kỳ trả lãi nào?
+A. Cho phép lựa chọn định kỳ trả lãi linh hoạt theo các mốc 01 tháng/lần hoặc 03 tháng/lần
+B. Cho phép lựa chọn định kỳ trả lãi linh hoạt theo các mốc 01 tháng/lần, 03 tháng/lần hoặc 06 tháng/lần
+C. Cho phép lựa chọn định kỳ trả lãi linh hoạt theo các mốc 03 tháng/lần hoặc 06 tháng/lần
+D. Quy định cố định chỉ áp dụng duy nhất một hình thức định kỳ trả lãi là 01 tháng/lần
+Đáp án đúng: A
+Câu 119: Khi khách hàng tổ chức thực hiện đóng sớm tài khoản "Tiền gửi trả lãi sau định kỳ trực tuyến" trong vòng 03 ngày kể từ ngày mở, quyền lợi về tiền lãi của khách hàng được quy định xử lý thế nào?
+A. Khách hàng vẫn được ngân hàng tính và chi trả tiền lãi theo mức lãi suất không kỳ hạn thấp nhất
+B. Khách hàng được chi trả tiền lãi bằng 30% tổng số tiền lãi tính theo mức lãi suất thỏa thuận ban đầu
+C. Khách hàng đóng sớm tài khoản trong vòng 03 ngày kể từ ngày mở tài khoản sẽ không được hưởng lãi
+D. Khách hàng được ngân hàng chi trả tiền lãi tính theo mức bằng 50% mức lãi suất không kỳ hạn hiện hành
+Đáp án đúng: C
+Câu 120: Theo quy định cấp tín dụng đầu tư kinh doanh bất động sản, tổng tỷ lệ dư nợ vay tại các TCTD và dư nợ trái phiếu doanh nghiệp để thực hiện dự án có quy mô sử dụng đất từ 20ha trở lên không được vượt quá bao nhiêu lần vốn chủ sở hữu?
+A. Tổng tỷ lệ dư nợ vay và dư nợ trái phiếu doanh nghiệp quy định không vượt quá 3,0 lần vốn chủ sở hữu
+B. Tổng tỷ lệ dư nợ vay và dư nợ trái phiếu doanh nghiệp quy định không vượt quá 4,0 lần vốn chủ sở hữu
+C. Tổng tỷ lệ dư nợ vay và dư nợ trái phiếu doanh nghiệp quy định không vượt quá 5,0 lần vốn chủ sở hữu
+D. Tổng tỷ lệ dư nợ vay và dư nợ trái phiếu doanh nghiệp quy định không vượt quá 5,67 lần vốn chủ sở hữu
+Đáp án đúng: D
+Câu 121: Văn bản 7607/NHNo-ĐCTC ngày 06/5/2026 của Agribank căn cứ trực tiếp vào các văn bản định chế nào sau đây? 
+A. Quyết định 1380/QĐ-HĐTV-ĐCTC, Công văn 19909/NHNo-ĐCTC, Nghị quyết 01/NQ-HĐTV năm 2026 và Thông báo Kết luận cuộc họp BCĐ ESG ngày 12/5/2025 
+B. Quyết định 1380/QĐ-HĐTV-ĐCTC, Công văn 19909/NHNo-ĐCTC, Nghị quyết 01/NQ-HĐTV năm 2025 và Thông báo Kết luận cuộc họp BCĐ ESG ngày 12/5/2026 
+C. Quyết định 1380/QĐ-HĐTV-ĐCTC, Công văn 19909/NHNo-ĐCTC, Quyết định 620/QĐ-HĐTV-NHS và Thông báo Kết luận cuộc họp BCĐ ESG ngày 06/5/2026 
+D. Quyết định 1380/QĐ-HĐTV-ĐCTC, Nghị quyết 01/NQ-HĐTV năm 2026 và Quyết định 620/QĐ-HĐTV-NHS ngày 05/10/2022 
+Đáp án đúng: A
+Câu 122: Mục tiêu cụ thể về tăng trưởng quy mô dư nợ tín dụng xanh đối với toàn hệ thống Agribank năm 2026 quy định tại Văn bản 7607/NHNo-ĐCTC là bao nhiêu? 
+A. Tăng trưởng tối thiểu 10% so với năm 2025 
+B. Tăng trưởng tối thiểu 5% so với năm 2025 
+C. Đạt tỷ trọng tối thiểu 5% trong tổng dư nợ tín dụng 
+D. Tăng trưởng tối thiểu 5% so với kế hoạch đầu năm 2026 
+Đáp án đúng: B
+Câu 123: Theo Kế hoạch triển khai năm 2026, chỉ tiêu ban hành sản phẩm/chương trình tín dụng xanh được quy định như thế nào? 
+A. Ban hành ít nhất 01 sản phẩm/chương trình cho KHDN và 01 cho KHCN 
+B. Ban hành ít nhất 02 sản phẩm/chương trình tín dụng xanh chung cho toàn bộ hệ thống 
+C. Ban hành ít nhất 02 sản phẩm/chương trình tín dụng xanh đối với KHDN và KHCN 
+D. Ban hành ít nhất 02 sản phẩm/chương trình đối với KHDN và ít nhất 01 sản phẩm/chương trình đối với KHCN 
+Đáp án đúng: C
+Câu 124: Chỉ tiêu cụ thể về huy động vốn xanh trong năm 2026 của Agribank đặt ra mức tối thiểu là bao nhiêu? 
+A. Huy động tối thiểu 2.000 tỷ đồng vốn xanh và tối thiểu 02 dự án hỗ trợ kỹ thuật 
+B. Huy động tối thiểu 3.000 tỷ đồng vốn xanh và tối thiểu 01 dự án hỗ trợ kỹ thuật 
+C. Huy động từ 2.000 đến 3.000 tỷ đồng thông qua duy nhất kênh phát hành trái phiếu xanh 
+D. Huy động tối thiểu 2.000 tỷ đồng vốn xanh và tối thiểu 03 dự án hỗ trợ kỹ thuật 
+Đáp án đúng: A
+Câu 125: Quy định về công tác nhân sự và đào tạo ESG tại các đơn vị trong hệ thống năm 2026 ghi nhận nội dung nào sau đây? 
+A. Thành lập Ban ESG riêng biệt; các đơn vị bố trí 02-03 đầu mối; 100% người lao động đào tạo tối thiểu 02 giờ/người 
+B. Thành lập bộ phận Phát triển bền vững tại Ban ĐCTC; các đơn vị bố trí ít nhất 1-2 đầu mối; 100% người lao động được đào tạo tối thiểu 01 giờ/lao động 
+C. Thành lập bộ phận Phát triển bền vững tại Ban KHDN; các đơn vị bố trí 1-2 đầu mối; 100% cán bộ quản lý được đào tạo tối thiểu 01 giờ/lao động 
+D. Thành lập Tổ giúp việc ESG tại Trụ sở chính; các chi nhánh bố trí ít nhất 01 đầu mối; 100% người lao động đào tạo tối thiểu 01 giờ/lao động 
+Đáp án đúng: B
+Câu 126: Chỉ tiêu xanh hóa hoạt động nội bộ năm 2026 quy định yêu cầu về tiêu thụ tài nguyên thiên nhiên (điện, nước, giấy, xăng dầu) như thế nào? 
+A. Giảm 5% mức tiêu thụ tài nguyên thiên nhiên so với năm 2025 
+B. Giảm mức tiêu thụ tài nguyên thiên nhiên so với mức tiêu thụ năm 2025 
+C. Giảm mức tiêu thụ tài nguyên thiên nhiên so với bình quân giai đoạn 2024-2025 
+D. Giảm tối thiểu 10% chi phí sử dụng tài nguyên thiên nhiên trong toàn hệ thống 
+Đáp án đúng: B
+Câu 127: Theo Phụ lục I, đơn vị nào chủ trì thực hiện công việc "Ban hành Khung tài chính xanh và lấy ý kiến của bên thứ hai (SPO) đối với Khung"? 
+A. Ban Định chế tài chính 
+B. Ban Khách hàng doanh nghiệp 
+C. Ban Chính sách tín dụng 
+D. Ban Quản lý Tài sản Nợ - Tài sản Có 
+Đáp án đúng: C
+Câu 128: Thời hạn hoàn thành công việc "Xây dựng Hồ sơ năng lực ESG của Agribank nhằm thu hút nguồn vốn xanh/bền vững quốc tế" do Ban ĐCTC chủ trì là khi nào? 
+A. Quý III/2026 
+B. Quý IV/2026 (Sau khi ban hành Khung tài chính xanh và lấy ý kiến SPO đối với Khung) 
+C. Quý II/2026 
+D. Thường xuyên trong năm 2026 
+Đáp án đúng: B
+Câu 129: Sản phẩm phát hành trái phiếu xanh trong nước của Agribank năm 2026 được phân công cho đơn vị nào chủ trì với quy mô dự kiến bao nhiêu? 
+A. Ban Định chế tài chính chủ trì; giá trị dự kiến 2.000 - 3.000 tỷ đồng 
+B. Ban Quản lý Tài sản Nợ - Tài sản Có chủ trì; giá trị dự kiến 2.000 - 3.000 tỷ đồng 
+C. Ban Chính sách tín dụng chủ trì; giá trị dự kiến tối thiểu 2.000 tỷ đồng 
+D. Ban Tài chính kế toán chủ trì; giá trị dự kiến 2.000 - 3.000 tỷ đồng 
+Đáp án đúng: B
+Câu 130: Việc "Cập nhật hệ thống CNTT để nhận diện các giải ngân khoản vay xanh trên hệ thống IPCAS" do Ban KHDN chủ trì phối hợp thực hiện dự kiến hoàn thành trong thời gian nào? 
+A. Quý III/2026 
+B. Quý IV/2026 
+C. 03 - 06 tháng sau ban hành Khung tài chính xanh 
+D. Ngay sau khi Hội đồng thành viên phê duyệt Kế hoạch 7607 
+Đáp án đúng: C
+Câu 131: Trong mảng công việc của Ban Truyền thông, các chiến dịch truyền thông về ESG theo 3 nhóm chỉ tiêu bao gồm số lượng chương trình cụ thể là: 
+A. Môi trường (7 chương trình); Xã hội (6 chương trình); Quản trị (3 chương trình) 
+B. Môi trường (6 chương trình); Xã hội (7 chương trình); Quản trị (3 chương trình) 
+C. Môi trường (7 chương trình); Xã hội (5 chương trình); Quản trị (4 chương trình) 
+D. Môi trường (10 chương trình); Xã hội (3 chương trình); Quản trị (2 chương trình) 
+Đáp án đúng: A
+Câu 132: Đơn vị nào chịu trách nhiệm chủ trì thực hiện mua sắm xanh đối với các dự án, nhiệm vụ mua sắm công cụ dụng cụ (CCDC) thân thiện với môi trường được chứng nhận Nhãn sinh thái Việt Nam? 
+A. Ban Quản lý đầu tư nội ngành 
+B. Văn phòng Trụ sở chính 
+C. Ban Tài chính kế toán 
+D. Ban Định chế tài chính 
+Đáp án đúng: C
+Câu 133: Cơ quan Đoàn thanh niên được phân công thực hiện giải pháp giảm tải việc in ấn báo cáo giấy thông qua phần mềm ứng dụng nào trong Quý II/2026? 
+A. Phần mềm theo dõi, báo cáo và chấm điểm, xếp loại kết quả hoạt động Đoàn và phong trào thanh niên năm 2026 
+B. Hệ thống văn phòng điện tử tích hợp chấm điểm thi đua Agribank 
+C. Phần mềm quản lý dữ liệu ESG đối với hoạt động vận hành nội bộ 
+D. Ứng dụng Agribank Plus tích hợp tính năng quản lý đoàn viên 
+Đáp án đúng: A
+Câu 134: Cơ quan Công đoàn vận động 100% người lao động tham gia phong trào hành động xanh với mục tiêu cụ thể hàng ngày là gì? 
+A. 100% người lao động giảm 10% lượng giấy in và 100% khách hàng sử dụng dịch vụ ngân hàng số 
+B. 100% người lao động thực hành ít nhất 01 hành động làm việc xanh mỗi ngày và 100% khách hàng đến giao dịch trực tiếp được tiếp cận thông điệp về phát triển xanh bền vững 
+C. 100% người lao động phân loại rác thải tại nguồn và 100% khách hàng đăng ký nhận hóa đơn điện tử 
+D. 100% các Công đoàn cơ sở đăng ký ít nhất 02 giải pháp tiết kiệm điện, nước mỗi ngày 
+Đáp án đúng: B
+Câu 135: Mốc thời gian hoàn thành nhiệm vụ "Hoàn thành bài giảng về phát triển bền vững cho người lao động và khách hàng của Agribank" do Trường Đào tạo cán bộ chủ trì là: 
+A. Quý II/2026 
+B. Quý III/2026 
+C. Quý IV/2026 
+D. Thường xuyên trong năm 2026 
+Đáp án đúng: B
+Câu 136: Đơn vị chủ trì nhiệm vụ "Nghiên cứu các tiêu chí xác định công cụ dụng cụ, tài sản xanh để phục vụ việc đánh giá kết quả triển khai mua sắm xanh trong hệ thống" vào Quý IV/2026 là: 
+A. Ban Tài chính kế toán 
+B. Ban Quản lý đầu tư nội ngành 
+C. Ban Định chế tài chính 
+D. Văn phòng Trụ sở chính 
+Đáp án đúng: C
+Câu 137: Trung tâm Quản lý rủi ro tín dụng được giao nhiệm vụ tổ chức các lớp hướng dẫn đánh giá rủi ro môi trường xã hội với quy mô tối thiểu là: 
+A. Ít nhất 01 lớp cho các chi nhánh và tập huấn nội bộ tại Trụ sở chính 
+B. Ít nhất 02 lớp hướng dẫn cho các chi nhánh trên phạm vi toàn quốc, đồng thời tăng cường tập huấn nội bộ cho cán bộ Trụ sở chính 
+C. Tối thiểu 03 lớp chia theo các khu vực Miền Bắc, Miền Trung và Miền Nam 
+D. Tổ chức đào tạo định kỳ hàng quý cho 100% cán bộ làm công tác thẩm định tín dụng 
+Đáp án đúng: B
+Câu 138: Trách nhiệm báo cáo định kỳ/đột xuất kết quả thực hiện Kế hoạch triển khai của các đơn vị đầu mối tại Trụ sở chính được gửi về đâu và trước mốc thời gian nào? 
+A. Gửi về Ban Định chế tài chính trước ngày 15/01/2027 
+B. Gửi trực tiếp Tổng Giám đốc trước ngày 31/12/2026 
+C. Gửi về Ban Kế hoạch chiến lược trước ngày 15/01/2027 
+D. Gửi về Ban Định chế tài chính trước ngày 28/02/2027 
+Đáp án đúng: A
+Câu 139: Ban Định chế tài chính có trách nhiệm tổng hợp, xây dựng báo cáo đánh giá kết quả thực hiện Kế hoạch triển khai trình Tổng Giám đốc trước thời hạn nào? 
+A. Trước ngày 15/01/2027 
+B. Trước ngày 31/01/2027 
+C. Trước ngày 28/02/2027 
+D. Trước ngày 15/03/2027 
+Đáp án đúng: C
+Câu 140: Đơn vị nào giữ vai trò "Đầu mối tổng hợp, phối hợp với Ban Định chế tài chính đôn đốc, theo dõi các đơn vị thực hiện nhiệm vụ được phân công" theo Phần III Tổ chức thực hiện? 
+A. Văn phòng Trụ sở chính 
+B. Ban Thư ký tổng hợp 
+C. Ban Kế hoạch chiến lược 
+D. Tổ giúp việc Ban chỉ đạo ESG 
+Đáp án đúng: B
+Câu 141. Mẫu biểu "Phiếu nhận hồ sơ kiêm giấy hẹn" ban hành kèm theo Quy định 2239 được ký hiệu là mẫu nào?
+A. Mẫu 01/THE
+B. Mẫu 08/THE
+C. Mẫu 12/THE
+D. Mẫu 13/THE
+Đáp án đúng: C
+Câu 142. Đối với hồ sơ phát hành thẻ tín dụng không có bảo đảm cho cá nhân, trường hợp khách hàng trả lương qua tài khoản ngân hàng khác, quy định yêu cầu cung cấp sao kê tài khoản trả lương trong thời gian bao lâu?
+A. 03 tháng gần nhất
+B. 06 tháng gần nhất
+C. 09 tháng gần nhất
+D. 12 tháng gần nhất
+Đáp án đúng: B
+Câu 143. Trong hồ sơ phát hành thẻ tín dụng cho cá nhân, điều kiện bắt buộc về hạn mức tín dụng thẻ để phải thu thập "Phương án sử dụng vốn" (Mẫu 04A/THE) và thông tin về người có liên quan là:
+A. Từ 100.000.000 VND trở lên
+B. Từ 300.000.000 VND trở lên
+C. Trên 400.000.000 VND
+D. Từ 500.000.000 VND trở lên
+Đáp án đúng: C
+Câu 144. Thời hạn thẩm định cấp tín dụng qua thẻ tín dụng tại CNPH đối với trường hợp khách hàng công ty (pháp nhân) không có bảo đảm bằng 100% số dư tiền gửi là:
+A. Tối đa 02 ngày làm việc
+B. Tối đa 03 ngày làm việc
+C. Tối đa 05 ngày làm việc
+D. Tối đa 07 ngày làm việc
+Đáp án đúng: C
+Câu 145. Khi không phê duyệt cấp tín dụng qua thẻ tín dụng, người quan hệ khách hàng có trách nhiệm thực hiện công việc nào sau đây?
+A. Lập biên bản hủy hồ sơ và lưu trữ mật tại chi nhánh
+B. Thông báo lý do từ chối phát hành thẻ (Mẫu 34/THE) và trả lại bộ Hồ sơ phát hành thẻ cho khách hàng
+C. Tự động chuyển hồ sơ sang đề nghị phát hành thẻ ghi nợ nội địa cho khách hàng
+D. Thông báo qua SMS và hủy toàn bộ thông tin CIF của khách hàng trên IPCAS
+Đáp án đúng: B
+Câu 146. Trường hợp thẻ tín dụng bị nghi ngờ gian lận, giả mạo, sao chép thông tin theo thông báo của Trung tâm Thẻ (TTT), chính sách thu phí phát hành lại thẻ và phí thường niên tại CNPH được quy định như thế nào?
+A. Thu 50% phí phát hành lại và miễn phí thường niên năm đầu
+B. Miễn phí phát hành lại thẻ và chủ động liên hệ TTT để hỗ trợ miễn phí thường niên năm đầu cho khách hàng
+C. Thu đầy đủ phí phát hành lại nhưng miễn phí thường niên năm tiếp theo
+D. Miễn phí phát hành lại và miễn toàn bộ phí thường niên trong suốt thời hạn thẻ
+Đáp án đúng: B
+Câu 147. Trong quy trình phát hành lại thẻ tín dụng khi có thay đổi hạng thẻ, thứ tự các bước thao tác trên hệ thống do cán bộ thực hiện là gì?
+A. Đóng thẻ trên FIMI -> Tất toán dư nợ -> Đăng ký đóng hợp đồng tín dụng trên CSP -> Hủy mã thành viên (Cancel of member) trên IPCAS -> Phát hành thẻ mới
+B. Tất toán dư nợ -> Đóng thẻ trên FIMI -> Đăng ký đóng hợp đồng tín dụng trên CSP -> Hủy mã thành viên (Cancel of member) trên IPCAS -> Phát hành thẻ mới
+C. Hủy mã thành viên trên IPCAS -> Tất toán dư nợ -> Đóng thẻ trên FIMI -> Đăng ký đóng hợp đồng trên CSP -> Phát hành thẻ mới
+D. Đăng ký đóng hợp đồng trên CSP -> Tất toán dư nợ -> Hủy mã thành viên trên IPCAS -> Đóng thẻ trên FIMI -> Phát hành thẻ mới
+Đáp án đúng: B
+Câu 148. Để đủ điều kiện được thẩm định cấp lại thẻ tín dụng khi thẻ hết hạn hiệu lực, khách hàng phải đáp ứng điều kiện về tình trạng nợ tại thời điểm thẩm định như thế nào?
+A. Không có nợ xấu trong vòng 12 tháng gần nhất
+B. Dư nợ thẻ không vượt quá 80% hạn mức tín dụng
+C. Không phát sinh phí chậm trả, lãi quá hạn tại thời điểm thẩm định
+D. Đã thanh toán tối thiểu 50% tổng dư nợ kỳ sao kê gần nhất
+Đáp án đúng: C
+Câu 149. Thời gian có hiệu lực của Thẻ trả trước vô danh sau khi chi nhánh thực hiện xác nhận bán thẻ trên hệ thống CSP được quy định cụ thể như thế nào?
+A. Có hiệu lực ngay lập tức sau khi xác nhận trên CSP
+B. Sau 01 ngày làm việc nếu xác nhận trước 16h00' và sau 02 ngày làm việc nếu xác nhận sau 16h00'
+C. Sau 12 giờ kể từ thời điểm xác nhận trên CSP
+D. Sau 02 ngày làm việc không phụ thuộc vào thời điểm xác nhận
+Đáp án đúng: B
+Câu 150. Sau khi đăng ký phát hành thẻ trên hệ thống, trong vòng bao nhiêu ngày làm việc nếu chi nhánh không xác nhận hoặc không tra soát trên CSP/phản hồi về việc chưa nhận được thẻ, chi nhánh phải hoàn toàn chịu trách nhiệm về mọi rủi ro tổn thất đối với thẻ đó?
+A. 05 ngày làm việc
+B. 07 ngày làm việc
+C. 10 ngày làm việc
+D. 15 ngày làm việc
+Đáp án đúng: C
+Câu 151. Trường hợp giao thẻ qua đường bưu điện, sau bao lâu kể từ thời điểm hẹn giao thẻ nếu không có phản hồi hoặc tra soát từ phía chủ thẻ, mặc nhiên được coi là chủ thẻ đã nhận được thẻ?
+A. 03 ngày làm việc
+B. 05 ngày làm việc
+C. 07 ngày làm việc
+D. 10 ngày làm việc
+Đáp án đúng: B
+Câu 152. Nếu sau thời hạn bao lâu kể từ ngày đến hẹn nhận thẻ mà chủ thẻ/người được ủy quyền không đến nhận thẻ và không có lý do chính đáng, chi nhánh sẽ lập Biên bản hủy thẻ?
+A. 01 tháng
+B. 02 tháng
+C. 03 tháng
+D. 06 tháng
+Đáp án đúng: C
+Câu 153. Đối với sản phẩm thẻ phụ thẻ ghi nợ quốc tế phát hành cho khách hàng dưới 15 tuổi, giao dịch viên phải thực hiện thao tác kỹ thuật gì trên hệ thống FIMI trước khi giao thẻ?
+A. Khóa toàn bộ chức năng thanh toán Internet
+B. Khống chế hạn mức giao dịch theo ngày tối đa 1.000.000 VND
+C. Thiết lập tính năng không cho phép giao dịch rút tiền
+D. Cài đặt chế độ xác thực 2 lần khi thực hiện giao dịch tại TBCNT
+Đáp án đúng: C
+Câu 154. Trong quy trình phát hành thẻ và định danh tại quầy (loại thẻ chưa in tên), thẻ ở trạng thái nào trên hệ thống mới được thực hiện định danh (liên kết thẻ với tài khoản)?
+A. Active
+B. Pending
+C. Declared
+D. Open
+Đáp án đúng: C
+Câu 155. Khách hàng cá nhân đăng ký phát hành thẻ ghi nợ vật lý qua kênh điện tử (Agribank Plus/eBanking) bị giới hạn số lượng phát hành tối đa là:
+A. 01 thẻ/năm/tài khoản
+B. 03 thẻ/năm/tài khoản
+C. 05 thẻ/năm/tài khoản
+D. Không giới hạn số lượng
+Đáp án đúng: C
+Câu 156. Giới hạn số lượng phát hành thẻ vật lý đối với 01 khách hàng khi thực hiện đăng ký qua kênh Agribank Digital là:
+A. 01 thẻ/01 loại sản phẩm thẻ/01 tài khoản
+B. 02 thẻ/01 loại sản phẩm thẻ/01 tài khoản
+C. 03 thẻ/01 loại sản phẩm thẻ/01 tài khoản
+D. 05 thẻ/01 loại sản phẩm thẻ/01 tài khoản
+Đáp án đúng: A
+Câu 157. Quy định về số lượng thẻ phi vật lý tối đa đang còn hiệu lực mà 01 khách hàng được phép phát hành trên 01 tài khoản qua kênh điện tử là bao nhiêu?
+A. Tối đa 01 thẻ còn hiệu lực/tài khoản
+B. Tối đa 02 thẻ còn hiệu lực/tài khoản
+C. Tối đa 03 thẻ còn hiệu lực/tài khoản
+D. Tối đa 05 thẻ còn hiệu lực/tài khoản
+Đáp án đúng: D
+Câu 158. Đối với đăng ký phát hành thẻ tín dụng qua kênh Agribank Digital, đơn vị nào có thẩm quyền quyết định hạn mức cấp tín dụng qua thẻ?
+A. Giám đốc Trung tâm Thẻ
+B. Tổng Giám đốc Agribank
+C. Giám đốc Chi nhánh phát hành (CNPH)
+D. Trưởng phòng Khách hàng cá nhân tại CNPH
+Đáp án đúng: C
+Câu 159. Khách hàng có nhu cầu đăng ký phát hành thẻ tín dụng qua kênh điện tử/Agribank Digital bắt buộc phải lựa chọn phát hành tại chi nhánh nào?
+A. Bất kỳ chi nhánh Agribank nào trên toàn hệ thống
+B. Chi nhánh quản lý địa bàn nơi khách hàng cư trú
+C. Chi nhánh nơi khách hàng mở tài khoản thanh toán
+D. Chi nhánh do Hệ thống tự động chỉ định ngẫu nhiên
+Đáp án đúng: C
+Câu 160. Thẩm quyền hủy mã thành viên (Cancel of member) của chủ thẻ trên hệ thống IPCAS trong trường hợp thay đổi hạng thẻ tín dụng thuộc về cán bộ nào tại CNPH?
+A. Kiểm soát viên nghiệp vụ thẻ
+B. Giao dịch viên/Người quan hệ khách hàng/Người quản lý khoản cấp tín dụng
+C. Giám đốc Chi nhánh
+D. Cán bộ quản trị hệ thống tại Trung tâm Thẻ
+Đáp án đúng: B
+Câu 161. Trong quy trình xử lý khiếu nại chuẩn hóa 6 bước áp dụng đa kênh tại ngân hàng, hai bước đầu tiên đòi hỏi cán bộ thực hiện những tác vụ cốt lõi nào?
+A. Xác minh dựa trên dữ liệu và đề xuất khung giải pháp khắc phục. 
+B. Tiếp nhận có cấu trúc, phân loại theo rủi ro/cảm xúc và tạo CRM/Ticket ngay lập tức. 
+C. Phản hồi theo cấu trúc 4 phần và tổng hợp nguyên nhân gốc (RCA). 
+D. Hẹn thời gian xử lý (SLA) và chuyển đổi giao dịch sang kênh mạng xã hội cá nhân. 
+Đáp án đúng: B 
+Câu 162. Công thức hạ nhiệt cảm xúc A-A-A-A áp dụng trong giao tiếp xử lý khiếu nại bao gồm các bước theo thứ tự chuẩn nào?
+A. Action – Apologize – Acknowledge – Assure
+B. Acknowledge – Action – Apologize – Assure
+C. Acknowledge – Apologize – Action – Assure 
+D. Apologize – Acknowledge – Assure – Action
+Đáp án đúng: C 
+Câu 163. Khi thực hiện nguyên tắc "Xin lỗi phù hợp" trong quản trị kỳ vọng khách hàng, cán bộ ngân hàng cần lưu ý điều gì?
+A. Xin lỗi và thừa nhận toàn bộ lỗi nghiệp vụ thuộc về ngân hàng ngay lập tức để làm xoa dịu khách hàng.
+B. Xin lỗi vì trải nghiệm chưa tốt của khách hàng, tuyệt đối không kết luận lỗi thuộc về ai khi chưa xác minh đầy đủ. 
+C. Dùng lời xin lỗi như một cam kết pháp lý bồi thường để giảm thiểu khả năng khiếu nại leo thang. 
+D. Chỉ xin lỗi khi hệ thống tra soát nội bộ đã xác định chính xác nguyên nhân do kỹ thuật. 
+Đáp án đúng: B 
+Câu 164. Chiến lược chốt giải pháp theo nguyên tắc "Next-Step" yêu cầu một kế hoạch hoàn hảo phải đảm bảo đủ 3 yếu tố nào?
+A. Tên người vi phạm, số tiền bồi thường, phương án kỷ luật.
+B. Trạng thái hiện tại, mốc thời gian tiếp theo, kênh & người liên hệ. 
+C. Mã hợp đồng, lịch sử giao dịch, văn bản pháp lý áp dụng.
+D. Trạng thái cảm xúc của khách, biên bản làm việc, chữ ký xác nhận. 
+Đáp án đúng: B 
+Câu 165. Sự khác biệt cốt lõi về mặt cơ chế hoạt động giữa "AI Tạo sinh" (Generative AI) và "AI Agents" (Tác nhân tự hành) là gì?
+A. AI Tạo sinh chỉ xử lý được hình ảnh, còn AI Agent chuyên xử lý văn bản quy phạm pháp luật. 
+B. AI Tạo sinh đóng vai trò "bộ não" biết suy nghĩ/tạo nội dung, trong khi AI Agent là "bộ não được gắn thêm công cụ/chân tay" để tự lập kế hoạch và thực thi chuỗi hành động. 
+C. AI Tạo sinh hoạt động dựa trên cây quyết định (Rule-based), còn AI Agent hoạt động dựa trên thống kê cơ bản. 
+D. AI Agent chỉ trả lời câu hỏi theo kịch bản có sẵn, trong khi AI Tạo sinh có thể tự gửi email và gọi API truy cập cơ sở dữ liệu. 
+Đáp án đúng: B 
+Câu 166. Siêu trợ lý Claude (Anthropic) sở hữu ưu thế vượt trội nào giúp công cụ này trở thành lựa chọn hàng đầu cho tác vụ rà soát hợp đồng tín dụng và hồ sơ thẩm định phức tạp?
+A. Khả năng truy cập internet thời gian thực và tích hợp trực tiếp vào Google Sheets. 
+B. Cửa sổ ngữ cảnh (Context Window) lên tới 1 triệu token, cho phép đọc và phân tích tài liệu hàng trăm trang trong một phiên làm việc. 
+C. Khả năng tạo ảnh AI trực tiếp và kết nối với hệ sinh thái mua sắm Canva/Zapier. 
+D. Tích hợp sẵn tính năng tự động phát Podcast/Audio Overview từ văn bản. 
+Đáp án đúng: B 
+Câu 167. Công cụ AI nào được đánh giá là "Trung tâm Tri thức Nội bộ" với cơ chế Grounded AI giúp loại bỏ ảo giác thông tin bằng cách chỉ trả lời dựa trên tài liệu được cung cấp?
+A. Perplexity 
+B. ChatGPT 
+C. NotebookLM 
+D. Copilot 
+Đáp án đúng: C 
+Câu 168. Mô hình "Tam giác sức mạnh AI" xác định yếu tố nào đóng vai trò là "Lõi trung tâm" quyết định sự thành bại khi triển khai AI trong công việc?
+A. Đỉnh 1: Kiến thức nền tảng & Chuyên môn nghiệp vụ. 
+B. Lõi trung tâm: Tư duy con người (Người ra quyết định, làm chủ). 
+C. Đỉnh 2: Kỹ năng chọn lựa Shortlist Tools AI. 
+D. Đỉnh 3: Quy trình tối ưu SOP có AI. 
+Đáp án đúng: B 
+Câu 169. Chuẩn Prompt nâng cao công thức ABM bao gồm 6 thành phần cốt lõi nào?
+A. Role, Task, Details, Context, Format & Style, Note 
+B. Role, Input, Processing, Output, Style, Review
+C. Task, Context, Target, Action, Checklist, Deadline
+D. System, User, Query, Data, Template, Constraint
+Đáp án đúng: A 
+Câu 170. Nhóm dữ liệu nào thuộc "Vùng Đỏ" (Red Zone) trong nguyên tắc phân tầng kiểm soát dữ liệu nhạy cảm khi tương tác với các công cụ AI công cộng?
+A. Báo cáo tài chính đã công bố công khai của doanh nghiệp niêm yết. 
+B. Biên bản họp nội bộ phòng ban và nhận xét nhân sự đã ẩn danh. 
+C. Thông tin định danh cá nhân (PII), mã nguồn lõi, dữ liệu tài chính mật của khách hàng. 
+D. Brochure sản phẩm, kịch bản Telesale mẫu và nội dung truyền thông bài viết PR. 
+Đáp án đúng: C 
+Câu 171. Để ngăn chặn AI bị "ô nhiễm ngữ cảnh chéo" giữa các dự án hoặc luồng công việc khác nhau, cán bộ ngân hàng nên áp dụng kỹ thuật thao tác nào?
+A. Sử dụng chung một cửa sổ hội thoại (Chat) duy nhất để AI ghi nhớ toàn bộ lịch sử công tác. 
+B. Bắt buộc tạo đoạn chat mới (New Chat) cho mỗi dự án hoặc công việc riêng biệt. 
+C. Tăng độ dài câu lệnh Prompt lên trên 2000 từ trong mỗi lần truy vấn. 
+D. Chuyển toàn bộ dữ liệu dạng bảng biểu sang định dạng hình ảnh PDF scan. 
+Đáp án đúng: B 
+Câu 172. Nguyên tắc "Làm phẳng dữ liệu" trước khi đưa file Excel vào AI xử lý yêu cầu cán bộ thực hiện thao tác kỹ thuật nào sau đây?
+A. Giữ nguyên các công thức hàm liên kết chéo giữa nhiều Sheet để AI học logic tính toán. 
+B. Chuyển toàn bộ file Excel thành file Scan dạng PDF mờ để tăng tính bảo mật. 
+C. Gộp sheet, thực hiện Paste Values (xóa công thức hàm) và ưu tiên xuất sang định dạng CSV. 
+D. Chèn thêm các Textbox và SmartArt vào bảng để mô tả rõ ý nghĩa các cột số liệu. 
+Đáp án đúng: C 
+Câu 173. Giao diện không gian làm việc tương tác Canvas (ChatGPT) hoặc Artifacts (Claude) mang lại bước tiến đột phá nào so với giao diện khung Chat truyền thống?
+A. Tự động kết nối với tài khoản ngân hàng của khách hàng để thực hiện giao dịch tự động. 
+B. Cho phép lưu trữ văn bản dài ở cửa sổ riêng biệt song song và bôi đen chỉnh sửa cục bộ trực tiếp mà không cần viết lại từ đầu hay copy-paste. 
+C. Tự động dịch thuật tất cả các cuộc gọi tổng đài thành giọng nói đa ngôn ngữ thời gian thực. 
+D. Loại bỏ hoàn toàn sự can thiệp của con người trong khâu thẩm định và phê duyệt tờ trình. 
+Đáp án đúng: B 
+Câu 174. Trong quy trình thực thi "Brain-First" 5 bước khi làm việc với AI, con người và AI giữ vai trò gì ở bước 2 (Draft) và bước 4 (Review)?
+A. Bước 2 do Con người phác thảo; Bước 4 do AI kiểm duyệt tuân thủ. 
+B. Bước 2 do AI khởi tạo bản thảo trong Canvas/Artifacts; Bước 4 do Con người thẩm định số liệu, tính logic và tuân thủ quy định nội bộ. 
+C. Cả Bước 2 và Bước 4 đều do AI tự động vận hành hoàn toàn không cần con người. 
+D. Bước 2 do Con người cung cấp dữ liệu thô; Bước 4 do AI tự động trình ký lên cấp phê duyệt. 
+Đáp án đúng: B 
+Câu 175. Xu hướng chuyển dịch dịch vụ khách hàng trong kỷ nguyên số chứng kiến sự thay đổi định hướng chiến lược nào của các ngân hàng thương mại?
+A. Chuyển từ tập trung vào trải nghiệm cảm xúc sang xử lý thủ công tại quầy. 
+B. Chuyển từ định hướng "Lấy sản phẩm làm trung tâm" sang "Lấy khách hàng làm trung tâm", ưu tiên cá nhân hóa trải nghiệm. 
+C. Chuyển từ phục vụ mọi lúc mọi nơi 24/7 sang chỉ phục vụ trong giờ hành chính tại trụ sở. 
+D. Chuyển từ phòng ngừa rủi ro chủ động sang phản ứng bị động sau khi xảy ra khủng hoảng. 
+Đáp án đúng: B 
+Câu 176. Mô hình phục vụ đa kênh đồng nhất (Omnichannel) đạt tiêu chuẩn chất lượng khi đáp ứng yêu cầu nào dưới đây?
+A. Khách hàng bắt buộc phải kê khai lại toàn bộ thông tin cá nhân mỗi khi chuyển sang kênh giao dịch mới. 
+B. Ngân hàng lưu trữ các hồ sơ khách hàng riêng biệt, không kết nối dữ liệu giữa kênh quầy và kênh ứng dụng di động. 
+C. Khách hàng bắt đầu giao dịch ở một kênh và có thể tiếp tục liền mạch ở kênh khác mà không phải lặp lại thông tin đã cung cấp. 
+D. Ngân hàng đóng bớt các kênh tổng đài và mạng xã hội để chuyển 100% giao dịch về quầy vật lý. 
+Đáp án đúng: C 
+Câu 177. Trong môi trường số hóa, bộ phận Chăm sóc khách hàng (CSKH) được định vị giữ vai trò chiến lược nào đối với uy tín ngân hàng?
+A. Là đơn vị hậu cần đơn thuần chỉ làm nhiệm vụ nhập liệu giao dịch. 
+B. Là trung tâm phát sinh chi phí và chịu trách nhiệm xử lý các lỗi kỹ thuật phần mềm. 
+C. Là "Mặt tiền thương hiệu" và là "Hàng rào an toàn" tuyến đầu giúp phòng ngừa rủi ro, dập tắt khủng hoảng truyền thông. 
+D. Là bộ phận độc lập, không cần liên kết hay chia sẻ dữ liệu với các phòng ban chuyên môn khác. 
+Đáp án đúng: C 
+Câu 178. Điểm khác biệt cơ bản giữa CSKH truyền thống và Trải nghiệm khách hàng thời đại số nằm ở tiêu chí nào?
+A. CSKH truyền thống chú trọng cảm xúc toàn bộ hành trình, còn thời đại số chỉ tập trung xử lý sự cố phát sinh. 
+B. CSKH truyền thống giới hạn ở giai đoạn sau thanh toán và chỉ do bộ phận CSKH đảm nhận; trong khi thời đại số bao quát toàn bộ hành trình (trước, trong, sau) và liên kết tất cả các bộ phận. 
+C. CSKH truyền thống tích hợp hệ sinh thái đa nền tảng, còn thời đại số chỉ tiếp cận qua kênh quầy vật lý. 
+D. CSKH truyền thống hướng tới kiến tạo hành trình liền mạch, còn thời đại số chỉ hướng tới giải quyết khiếu nại tại chỗ. 
+Đáp án đúng: B 
+Câu 179. Khi đối mặt với các "Điểm kích hoạt" (Trigger words) mang tính leo thang căng thẳng từ khách hàng như "Lừa đảo", "Tôi sẽ đưa lên mạng xã hội", "Ngân hàng làm ăn kiểu gì?", ưu tiên xử lý hàng đầu của cán bộ là gì?
+A. Lập tức đưa ra các lập luận nghiệp vụ và quy định điều khoản hợp đồng để chứng minh ngân hàng đúng. 
+B. Ưu tiên hạ nhiệt cảm xúc, áp dụng kỹ thuật "giọng thấp - nhịp chậm - câu ngắn" và dừng việc tranh luận đúng sai. 
+C. Ngắt lời khách hàng để yêu cầu khách cung cấp đầy đủ thông tin xác thực tài khoản công khai. 
+D. Nhượng bộ các yêu cầu tài chính nằm ngoài thẩm quyền để tránh việc khách hàng đăng bài lên mạng xã hội. 
+Đáp án đúng: B 
+Câu 180. Theo quy định tại Luật Trí tuệ nhân tạo 2025 (Số 134/2025/QH15) và các nguyên tắc đạo đức AI, hành vi nào sau đây bị nghiêm cấm tuyệt đối?
+A. Sử dụng AI để tóm tắt các văn bản Thông tư, Quy định pháp luật đã công khai. 
+B. Lợi dụng công nghệ AI (như tạo Deepfake) để thao túng nhận thức, lừa dối hoặc xâm phạm quyền lợi hợp pháp của tổ chức, cá nhân. 
+C. Ẩn danh thông tin định danh cá nhân (PII) trước khi đưa dữ liệu vào công cụ phân tích. 
+D. Áp dụng cơ chế Human-in-the-loop để kiểm chứng lại các đầu ra do AI đề xuất. 
+Đáp án đúng: B 
+Câu 181. Cơ quan cấp cao nào trực tiếp ban hành Nghị quyết chủ trương và giao Ban Chấp hành Công đoàn Agribank chủ trì phối hợp với Ban Tuyên giáo Đảng ủy triển khai Hội thi "Đại sứ Văn hóa Agribank 2026"?
+A. Hội đồng Thành viên Agribank phối hợp cùng Thường trực Công đoàn Ngân hàng Việt Nam.
+B. Đảng ủy Agribank phối hợp cùng Ban Chấp hành Công đoàn Agribank.
+C. Ban Điều hành Agribank phối hợp cùng Hội đồng Thi đua Khen thưởng Agribank.
+D. Ban Thường vụ Công đoàn Ngân hàng Việt Nam phối hợp với Ủy ban Nhân sự Agribank.
+Đáp án đúng: B
+Câu 182. Theo Kế hoạch số 186/KH-CĐ-NHNo ngày 12/03/2026 về việc tổ chức Hội thi "Đại sứ Văn hóa Agribank 2026", Vòng thi sơ loại cấp Chi nhánh/Đơn vị cơ sở phải hoàn tất công tác báo cáo kết quả về Ban Tổ chức trước thời điểm nào?
+A. Trước ngày 19/05/2026 để chào mừng Ngày sinh Chủ tịch Hồ Chí Minh.
+B. Trước ngày 30/06/2026 để đánh giá sơ kết kế hoạch quy chế văn hóa giai đoạn 1.
+C. Trước ngày 02/09/2026 để chuẩn bị cho công tác tổng duyệt Vòng thi chung kết.
+D. Trước ngày 26/03/2026 để gắn liền với chuỗi hoạt động của Tháng Thanh niên.
+Đáp án đúng: B
+Câu 183. Điểm mới mang tính đột phá trong thể lệ Hội thi "Đại sứ Văn hóa Agribank 2026" so với Cuộc thi "Cán bộ Agribank Thanh lịch - Giỏi nghiệp vụ" trước đây là gì?
+A. Chuyển dịch trọng tâm từ đánh giá ngoại hình và năng khiếu sân khấu sang đo lường chỉ tiêu huy động vốn cá nhân.
+B. Chuyển dịch từ việc tuyên truyền lý thuyết Cẩm nang Văn hóa sang đánh giá thực hành hành vi ứng xử đa kênh và năng lực ứng dụng AI/Công nghệ số.
+C. Thay thế hoàn toàn hình thức thi sân khấu hóa bằng 100% các bài thi tự luận giải quyết tình huống pháp lý tín dụng.
+D. Mở rộng đối tượng dự thi bao gồm cả cộng tác viên bán hàng và nhân sự thuộc các công ty liên kết của Agribank.
+Đáp án đúng: B
+Câu 184. Định vị "Văn hóa doanh nghiệp là nguồn lực nội sinh" trong Chiến lược phát triển thương hiệu Agribank giai đoạn 2026 - 2030 được thể hiện qua quan điểm chỉ đạo nào dưới đây?
+A. Văn hóa doanh nghiệp đóng vai trò là cơ chế kiểm soát độc lập thay thế cho các công cụ quản trị rủi ro nghiệp vụ tại quầy.
+B. Văn hóa doanh nghiệp là nền tảng định hình chuẩn mực hành vi, gia tăng giá trị thương hiệu và tạo động lực cạnh tranh bền vững cho hệ thống.
+C. Văn hóa doanh nghiệp là tiêu chí có trọng số cao nhất quyết định việc phân bổ chỉ tiêu dư nợ hàng năm cho các chi nhánh.
+D. Văn hóa doanh nghiệp là tập hợp các chế tài xử lý kỷ luật lao động áp dụng bắt buộc đối với nhân sự toàn hệ thống.
+Đáp án đúng: B
+Câu 185. Trong bộ chuẩn mực ứng xử của Hội thi Đại sứ Văn hóa Agribank 2026, tinh thần "Phụng sự từ trái tim" được cụ thể hóa bằng yêu cầu tác phong nào sau đây?
+A. Linh hoạt bỏ qua một số giấy tờ trong hồ sơ vay vốn đối với khách hàng truyền thống để rút ngắn thời gian giao dịch.
+B. Lắng nghe chân thành, thấu hiểu nhu cầu, giữ thái độ tôn trọng và cung cấp giải pháp tài chính tối ưu, an toàn cho khách hàng.
+C. Ưu tiên tư vấn các sản phẩm dịch vụ mang lại phí dịch vụ cao trước khi giải quyết nhu cầu cốt lõi của khách hàng.
+D. Miễn giảm tối đa các loại phí giao dịch tài khoản đối với nhóm khách hàng ưu tiên theo thẩm quyền của giao dịch viên.
+Đáp án đúng: B
+Câu 186. Tiêu chí "Tác phong chuẩn mực tại không gian giao dịch" đánh giá cán bộ vi phạm Quy tắc ứng xử Agribank khi thực hiện hành vi nào sau đây?
+A. Chủ động mỉm cười, chào hỏi khách hàng và hướng dẫn khách hàng lấy số thứ tự tự động khi vào sảnh giao dịch.
+B. Thực hiện bán hàng chéo sản phẩm dịch vụ ngân hàng số khi chưa tư vấn đầy đủ về tính năng, quyền lợi và biểu phí áp dụng.
+C. Giải thích rõ ràng các quy định pháp lý và quy trình tra soát nghiệp vụ bằng từ ngữ phổ thông dễ hiểu.
+D. Đeo thẻ tên đúng vị trí, mặc đồng phục theo đúng quy định ngày làm việc và giữ quầy giao dịch ngăn nắp.
+Đáp án đúng: B
+Câu 187. Trong nội dung thi ứng xử tình huống, khi đối mặt với khách hàng đang giận giữ do sự cố gián đoạn dịch vụ Agribank Plus, cán bộ mang tinh thần Đại sứ Văn hóa cần ưu tiên thực hiện bước thao tác nào đầu tiên?
+A. Trích dẫn ngay điều khoản miễn trừ trách nhiệm sự cố kỹ thuật trên hợp đồng sử dụng dịch vụ ngân hàng điện tử để giải thích.
+B. Áp dụng kỹ thuật hạ nhiệt cảm xúc, lắng nghe không ngắt lời, thể hiện sự đồng cảm với trải nghiệm chưa tốt và tiếp nhận tra soát. 
+C. Chuyển ngay cuộc gọi/giao dịch sang Trung tâm Dịch vụ khách hàng (Call Center) để cán bộ chuyên trách giải quyết.
+D. Lập biên bản làm việc ghi nhận vi phạm gây mất trật tự của khách hàng tại điểm giao dịch và trình Lãnh đạo chi nhánh.
+Đáp án đúng: B 
+Câu 188. Hành vi nào dưới đây của cán bộ Agribank bị tính điểm trừ nặng hoặc hủy kết quả thi do vi phạm Quy chế quản lý thông tin và môi trường mạng xã hội của Agribank?
+A. Đăng tải bài viết chia sẻ cảm xúc về cuộc thi kèm hình ảnh không gian giao dịch xanh của đơn vị lên trang cá nhân.
+B. Đăng tải video bài dự thi có xuất hiện hình ảnh màn hình hệ thống hiển thị thông tin tài khoản và số điện thoại của khách hàng.
+C. Sử dụng logo chuẩn và hình ảnh nhận diện thương hiệu Agribank theo đúng cẩm nang hướng dẫn trong video clip dự thi.
+D. Tạo các nhóm thảo luận nội bộ trên ứng dụng tin nhắn để trao đổi kinh nghiệm ôn luyện các câu hỏi nghiệp vụ.
+Đáp án đúng: B
+Câu 189. Tiêu chí đánh giá phần thi "Sáng kiến Văn hóa" tại Hội thi Đại sứ Văn hóa Agribank 2026 yêu cầu đề tài dự thi phải đáp ứng điều kiện tiên quyết nào?
+A. Đề tài phải có tính thực tiễn cao, khả năng áp dụng trực tiếp giúp cải thiện trải nghiệm khách hàng, tối ưu hóa quy trình hoặc lan tỏa giá trị thương hiệu.
+B. Đề tài phải lập trình hoàn chỉnh một ứng dụng phần mềm độc lập để tích hợp vào hệ thống Core Banking của Agribank.
+C. Đề tài phải phân tích toàn diện mô hình quản trị rủi ro của các ngân hàng thương mại lớn trong khu vực Đông Nam Á.
+D. Đề tài phải đề xuất được khung chính sách tiền tệ và lãi suất ưu đãi riêng biệt cho khu vực kinh tế nông nghiệp.
+Đáp án đúng: A
+Câu 190. Yêu cầu nào sau đây thể hiện đúng tinh thần "Đại sứ Văn hóa Agribank gắn liền với Ngân hàng Xanh" tại chi nhánh?
+A. Ngừng hoàn toàn việc in chứng từ giấy đối với 100% các giao dịch nộp/rút tiền tại quầy để chuyển sang xác thực vân tay.
+B. Thúc đẩy quy trình vận hành ít giấy tờ (Paperless), phân loại rác thải tại công sở, tiết kiệm năng lượng và hướng dẫn khách hàng sử dụng kênh số.
+C. Từ chối cấp tín dụng đối với tất cả các doanh nghiệp sản xuất chưa đạt chứng nhận tiêu chuẩn môi trường ISO 14001.
+D. Đổi mới toàn bộ nhận diện ngoại thất của các Điểm giao dịch tự động Digital Banking sang tông màu xanh lá đậm.
+Đáp án đúng: B
+Câu 191. Khái niệm "Tính liên tục trong trải nghiệm khách hàng" (Omnichannel Customer Experience) được nhấn mạnh trong tài liệu ôn thi Đại sứ Văn hóa Agribank được hiểu là:
+A. Khách hàng bắt đầu giao dịch ở bất kỳ kênh nào (tại quầy hay kênh số) đều nhận được chất lượng dịch vụ đồng nhất và dữ liệu được kết nối liền mạch. 
+B. Khách hàng bắt buộc phải duy trì số dư tiền gửi thanh toán bình quân hàng tháng để không bị gián đoạn các tính năng trên app.
+C. Cán bộ quản lý khách hàng (RM) có trách nhiệm túc trực 24/7 để trả lời mọi cuộc gọi tư vấn kể cả ngoài giờ hành chính.
+D. Hệ thống tự động trích nợ tài khoản định kỳ của khách hàng đúng ngày quy định mà không cần gửi thông báo trước.
+Đáp án đúng: A 
+Câu 192. Mục tiêu truyền thông cốt lõi của phong trào "Tủ sách cộng đồng" gắn liền với chuỗi hoạt động Đại sứ Văn hóa Agribank 2026 là gì?
+A. Tổ chức điểm bán các đầu sách tài chính ngân hàng giá rẻ để tạo nguồn thu cho quỹ hoạt động xã hội của Công đoàn.
+B. Lan tỏa văn hóa đọc, kiến tạo không gian tri thức thân thiện phục vụ khách hàng và thể hiện trách nhiệm xã hội tại điểm giao dịch.
+C. Số hóa toàn bộ thư viện sách truyền thống của Agribank thành các file âm thanh (Audiobook) đăng tải trên website.
+D. Yêu cầu cán bộ nhân viên thực hiện quyên góp tối thiểu 05 đầu sách nghiệp vụ tài chính hàng năm về thư viện Trụ sở chính.
+Đáp án đúng: B
+Câu 193. Thí sinh đạt danh hiệu "Đại sứ Văn hóa Agribank 2026" có nghĩa vụ chính yếu nào trong công tác phát triển đơn vị sau khi kết thúc hội thi?
+A. Được điều động chuyên trách công tác truyền thông và không phải tham gia các chỉ tiêu kinh doanh nghiệp vụ tại chi nhánh.
+B. Đóng vai trò hạt nhân truyền cảm hứng, duy trì chuẩn mực hành vi mẫu mực và chủ động tham gia các chương trình lan tỏa văn hóa của Agribank.
+C. Được quyền thay mặt Giám đốc Chi nhánh ký duyệt các khoản tài trợ chương trình an sinh xã hội tại địa phương.
+D. Chịu trách nhiệm trực tiếp đào tạo lại toàn bộ quy trình giao tiếp cho nhân sự mới tuyển dụng của toàn hệ thống.
+Đáp án đúng: B
+Câu 194. Khi ứng dụng các công cụ Generative AI (như Claude, ChatGPT) để biên soạn nội dung truyền thông cho Hội thi, cán bộ tuân thủ đúng Quy định bảo mật dữ liệu Agribank khi thực hiện thao tác nào?
+A. Đưa toàn bộ báo cáo tài chính nội bộ chưa công bố vào khung chat AI để nhờ tóm tắt thành bài phát biểu.
+B. Chỉ đưa các thông tin, chủ đề đã được Agribank công khai và tuyệt đối không tải lên thông tin định danh (PII) của khách hàng hay dữ liệu mật. 
+C. Đưa danh sách mã định danh khách hàng kèm số điện thoại lên AI để phân tích hành vi và viết kịch bản chăm sóc.
+D. Sử dụng tài khoản cá nhân đăng ký bằng email công vụ Agribank để tải lên các quy trình nghiệp vụ chưa ban hành.
+Đáp án đúng: B 
+Câu 195. Biểu hiện nào sau đây chứng minh cán bộ Agribank thực hiện đúng giá trị "Trung thực" trong Bộ chuẩn mực văn hóa ứng xử khi lập Tờ trình thẩm định tín dụng?
+A. Bỏ qua các dấu hiệu suy giảm khả năng tài chính của khách hàng để đảm bảo tiến độ giải ngân kế hoạch thi đua.
+B. Phản ánh khách quan, chính xác tình hình tài chính, pháp lý của khách hàng và chịu trách nhiệm về các đánh giá chuyên môn của mình.
+C. Giấu bớt các thông tin dư nợ của khách hàng tại các tổ chức tín dụng khác để hồ sơ vay vốn dễ dàng vượt qua khâu kiểm soát.
+D. Điều chỉnh tăng doanh thu dự kiến của dự án kinh doanh nhằm giúp khách hàng đạt đủ điều kiện về tỷ lệ bảo đảm tiền vay.
+Đáp án đúng: B
+Câu 196. Văn hóa ứng xử "Đồng nghiệp gắn kết" theo Cẩm nang Văn hóa Agribank được thể hiện rõ nhất qua cách thức làm việc nào giữa các phòng ban chuyên môn?
+A. Phòng ban chuyên môn chỉ xử lý các hồ sơ thuộc đúng chức năng, từ chối phối hợp khi chưa có văn bản chỉ đạo của Ban Giám đốc.
+B. Tôn trọng, chủ động chia sẻ thông tin, phối hợp giải quyết công việc vì mục đích chung và không đổ lỗi khi xảy ra sự cố.
+C. Phân chia rõ ràng trách nhiệm cá nhân để tránh bị liên lụy khi hồ sơ phát sinh rủi ro nợ xấu.
+D. Ưu tiên xử lý nhanh các giao dịch của phòng ban mình trước khi hỗ trợ các đơn vị khác trong cùng chi nhánh.
+Đáp án đúng: B
+Câu 197. Chuẩn năng lực của một "Đại sứ Văn hóa Agribank trong kỷ nguyên số" đòi hỏi sự kết hợp giữa hai yếu tố nền tảng nào?
+A. Năng lực lập trình hệ thống CNTT chuyên sâu và kỹ năng phân tích báo cáo tài chính doanh nghiệp lớn.
+B. Vừa thấu hiểu, thực hành chuẩn mực đạo đức văn hóa giao tiếp, vừa thành thạo kỹ năng số và có tư duy đổi mới sáng tạo.
+C. Kỹ năng giao tiếp trực tiếp tại quầy và khả năng làm việc độc lập hoàn toàn không phụ thuộc vào công cụ số.
+D. Am hiểu sâu sắc các thông lệ tài chính quốc tế và khả năng biên dịch tài liệu tiếng Anh chuyên ngành.
+Đáp án đúng: B
+Câu 198. Kỹ thuật "Human-in-the-loop" (Con người kiểm soát) khi ứng dụng AI tạo sinh vào việc viết bài tuyên truyền Hội thi Đại sứ Văn hóa yêu cầu cán bộ thực hiện vai trò gì?
+A. Tin tưởng tuyệt đối vào văn phong do AI tạo ra và sao chép trực tiếp để đăng tải lên các kênh truyền thông chính thức.
+B. Con người đóng vai trò chốt chặn cuối cùng thẩm định tính chính xác của số liệu, sự tuân thủ quy định và định hướng tư tưởng bài viết. 
+C. Chuyển toàn bộ nội dung do AI tạo ra cho Bộ phận An ninh mạng kiểm tra mã độc trước khi sử dụng.
+D. Yêu cầu AI tự động phê duyệt và phân phối nội dung lên các trang fanpage của chi nhánh theo kịch bản có sẵn.
+Đáp án đúng: B 
+Câu 199. Mục tiêu lâu dài mà Đảng ủy và Ban Lãnh đạo Agribank muốn đạt được thông qua Hội thi "Đại sứ Văn hóa Agribank 2026" là gì?
+A. Tạo ra một đợt sinh hoạt nghệ thuật giải trí ngắn hạn giúp giảm bớt áp lực công việc cho người lao động.
+B. Khơi dậy sức mạnh nội sinh, củng cố niềm tin yêu nghề, nâng cao chất lượng dịch vụ và vị thế thương hiệu Agribank bền vững.
+C. Cắt giảm chi phí tổ chức các khóa đào tạo kỹ năng giao tiếp ngắn hạn cho nhân sự toàn hệ thống.
+D. Thay thế cho các đợt kiểm tra đánh giá trình độ chuyên môn nghiệp vụ định kỳ hàng năm tại các chi nhánh.
+Đáp án đúng: B
+Câu 200. Giá trị cốt lõi mang tính nền tảng tạo nên sự khác biệt thương hiệu mà mỗi Đại sứ Văn hóa Agribank có trách nhiệm tiếp tục thắp sáng là gì?
+A. Định hướng phát triển trở thành ngân hàng đầu tư chuyên cung cấp các sản phẩm tài chính phái sinh phức tạp.
+B. Sự gắn kết thủy chung, đồng hành cùng "Tam nông" (Nông nghiệp, Nông dân, Nông thôn) và triết lý kinh doanh "Phụng sự cộng đồng".
+C. Tập trung nguồn lực mở rộng thị phần tại các trung tâm tài chính lớn và khối khách hàng FDI.
+D. Chiến lược chuyển đổi thành ngân hàng thuần số 100% không duy trì mạng lưới chi nhánh vật lý.
+Đáp án đúng: B`;
+
+        // Hàm phân tích văn bản (Parser)
+        function parseRawQuestions(text) {
+            const questions = [];
+            // Cắt đoạn văn bản theo cụm "Câu X." hoặc "Câu X:"
+            const blocks = text.split(/Câu \d+[\.\:]/g).filter(b => b.trim().length > 0);
+
+            blocks.forEach((block, index) => {
+                const lines = block.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                let content = "";
+                let options = ["", "", "", ""];
+                let correctIndex = 0;
+                let currentOption = -1;
+
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i];
+                    
+                    // Xử lý các dòng bắt đầu bằng A., B., C., D.
+                    if (line.startsWith('A.')) { options[0] = line.substring(2).trim(); currentOption = 0; }
+                    else if (line.startsWith('B.')) { options[1] = line.substring(2).trim(); currentOption = 1; }
+                    else if (line.startsWith('C.')) { options[2] = line.substring(2).trim(); currentOption = 2; }
+                    else if (line.startsWith('D.')) { options[3] = line.substring(2).trim(); currentOption = 3; }
+                    // Xử lý dòng chứa đáp án đúng (có thể là "Đáp án đúng: X" hoặc "Đáp án: X")
+                    else if (line.toLowerCase().includes('đáp án đúng:') || line.toLowerCase().includes('đáp án:')) {
+                        let ans = line.split(':');
+                        if (ans.length > 1) {
+                            ans = ans[1].trim().charAt(0).toUpperCase();
+                            if (ans === 'A') correctIndex = 0;
+                            else if (ans === 'B') correctIndex = 1;
+                            else if (ans === 'C') correctIndex = 2;
+                            else if (ans === 'D') correctIndex = 3;
+                        }
+                    } else {
+                        // Nối vào nội dung câu hỏi nếu chưa duyệt tới các đáp án
+                        if (currentOption === -1) {
+                            content += (content.length > 0 ? " " : "") + line;
+                        } else {
+                            // Nếu đang ở trong một option mà bị xuống dòng, nối tiếp vào option đó
+                            options[currentOption] += " " + line;
+                        }
+                    }
+                }
+
+                questions.push({
+                    content: content,
+                    options: options,
+                    correctAnswerIndex: correctIndex
+                });
+            });
+            return questions;
+        }
+
+        // Tạo bộ dữ liệu câu hỏi từ văn bản mới
+        const MY_REAL_QUESTIONS = parseRawQuestions(RAW_TEXT);
+        // ==========================================================
+
+        // --- CẤU HÌNH FIREBASE ---
+        let db = null, auth = null;
+        let appId = 'trac-nghiem-app-v1';
+        
+        let TOTAL_QUESTIONS = 200;
+        const EXAM_TIME_MINUTES = 60;
+        let questionsData = []; 
+        let isSaving = false;
+        
+        const gameState = {
+            userId: null,
+            userInfo: { name: '', id: '' },
+            currentQuestionIndex: 0,
+            answers: [],
+            marked: [],
+            timeRemaining: EXAM_TIME_MINUTES * 60,
+            timerInterval: null,
+            isFinished: false
+        };
+
+        const UI = {
+            screens: {
+                login: document.getElementById('loginScreen'),
+                exam: document.getElementById('examScreen'),
+                result: document.getElementById('resultScreen'),
+                admin: document.getElementById('adminScreen'),
+                review: document.getElementById('reviewScreen')
+            },
+            btnStartExam: document.getElementById('btnStartExam'),
+            loadingOverlay: document.getElementById('firebaseLoading'),
+            admin: {
+                sectionStudent: document.getElementById('studentLoginSection'),
+                sectionAdmin: document.getElementById('adminLoginSection'),
+                btnShowAdmin: document.getElementById('btnShowAdminLogin'),
+                btnShowStudent: document.getElementById('btnShowStudentLogin'),
+                formLogin: document.getElementById('adminForm'),
+                btnExit: document.getElementById('btnExitAdmin'),
+                btnRefresh: document.getElementById('btnRefreshAdmin'),
+                tableBody: document.getElementById('adminTableBody'),
+                totalSpan: document.getElementById('adminTotalSubmissions')
+            }
+        };
+
+        async function initApp() {
+            setupEventListeners();
+            
+            // Xử lý xác thực (Sẽ rơi vào catch và chạy offline trên Github Pages)
+            try {
+                appId = typeof __app_id !== 'undefined' ? __app_id : 'trac-nghiem-app-v1';
+                const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+                
+                if (firebaseConfig && Object.keys(firebaseConfig).length > 0) {
+                    const app = initializeApp(firebaseConfig);
+                    db = getFirestore(app);
+                    auth = getAuth(app);
+                    await signInAnonymously(auth);
+                    onAuthStateChanged(auth, async (user) => {
+                        if (user) {
+                            gameState.userId = user.uid;
+                            await fetchQuestionsFromDB();
+                        }
+                    });
+                } else {
+                    throw new Error("Không có Firebase Config - Chạy Local");
+                }
+            } catch (error) {
+                console.log("Đang chạy ở chế độ Local/Github Pages độc lập");
+                gameState.userId = "local_user_" + Date.now();
+                await fetchQuestionsFromDB();
+            }
+        }
+
+        async function fetchQuestionsFromDB() {
+            try {
+                if (db) {
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'questionBank');
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists() && docSnap.data().questions && docSnap.data().questions.length > 0) {
+                        questionsData = docSnap.data().questions;
+                    } else {
+                        throw new Error("Không có dữ liệu Cloud");
+                    }
+                } else {
+                    throw new Error("Không có kết nối Cloud");
+                }
+            } catch(e) {
+                // ƯU TIÊN 1: Lấy dữ liệu thật bạn đã dán vào biến MY_REAL_QUESTIONS ở trên cùng
+                if (MY_REAL_QUESTIONS && MY_REAL_QUESTIONS.length > 1) {
+                    // Cấp ID tự động cho dữ liệu của bạn
+                    questionsData = MY_REAL_QUESTIONS.map((q, index) => ({...q, id: index + 1}));
+                } 
+                // ƯU TIÊN 2: Lấy dữ liệu LocalStorage (nếu Admin vừa upload xong trên máy đó)
+                else {
+                    const localQ = localStorage.getItem('thidaisu_questions');
+                    if(localQ) {
+                        questionsData = JSON.parse(localQ);
+                    } else {
+                        // ƯU TIÊN 3: Bất đắc dĩ mới dùng Data giả lập
+                        questionsData = generateMockData();
+                    }
+                }
+            }
+            
+            TOTAL_QUESTIONS = questionsData.length;
+            gameState.answers = new Array(TOTAL_QUESTIONS).fill(null);
+            gameState.marked = new Array(TOTAL_QUESTIONS).fill(false);
+            
+            const totalInfoEl = document.getElementById('questionCountDisplay');
+            if(totalInfoEl) totalInfoEl.textContent = `${TOTAL_QUESTIONS} câu`;
+            
+            UI.loadingOverlay.style.display = 'none';
+        }
+
+        function setupEventListeners() {
+            document.getElementById('loginForm').addEventListener('submit', handleLogin);
+            document.getElementById('btnPrev').addEventListener('click', () => changeQuestion(-1));
+            document.getElementById('btnNext').addEventListener('click', () => changeQuestion(1));
+            document.getElementById('btnMark').addEventListener('click', toggleMarkCurrentQuestion);
+            document.getElementById('btnSubmit').addEventListener('click', requestSubmit);
+            document.getElementById('btnCancelSubmit').addEventListener('click', closeConfirmModal);
+            document.getElementById('btnConfirmSubmit').addEventListener('click', finishExam);
+            document.getElementById('btnExportResult').addEventListener('click', exportResultToCSV);
+            document.getElementById('btnReviewExam').addEventListener('click', showReviewScreen);
+            document.getElementById('btnCloseReview').addEventListener('click', hideReviewScreen);
+
+            document.getElementById('btnOpenSidebar').addEventListener('click', openSidebar);
+            document.getElementById('btnCloseSidebar').addEventListener('click', closeSidebar);
+            document.getElementById('sidebarOverlay').addEventListener('click', closeSidebar);
+            
+            // Admin Events
+            UI.admin.btnShowAdmin.addEventListener('click', showAdminLogin);
+            UI.admin.btnShowStudent.addEventListener('click', showStudentLogin);
+            UI.admin.formLogin.addEventListener('submit', handleAdminLogin);
+            UI.admin.btnExit.addEventListener('click', () => {
+                UI.screens.admin.classList.add('hidden');
+                UI.screens.login.classList.remove('hidden');
+                showStudentLogin();
+            });
+            UI.admin.btnRefresh.addEventListener('click', loadAdminData);
+
+            document.getElementById('btnUploadExcel').addEventListener('click', () => {
+                document.getElementById('excelFileInput').click();
+            });
+            document.getElementById('excelFileInput').addEventListener('change', handleExcelUpload);
+        }
+
+        async function handleExcelUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const statusEl = document.getElementById('uploadStatus');
+            statusEl.textContent = "Đang xử lý...";
+            statusEl.className = "text-xs font-medium text-blue-600";
+
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                try {
+                    const data = new Uint8Array(event.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const json = XLSX.utils.sheet_to_json(worksheet, {header: 1}); 
+
+                    let newQuestions = [];
+                    for(let i = 1; i < json.length; i++) {
+                        const row = json[i];
+                        if(!row || row.length < 2) continue; 
+                        
+                        let content = row[0] ? row[0].toString().trim() : "";
+                        if (!content) continue;
+                        
+                        let options = [
+                            row[1] ? row[1].toString().trim() : "",
+                            row[2] ? row[2].toString().trim() : "",
+                            row[3] ? row[3].toString().trim() : "",
+                            row[4] ? row[4].toString().trim() : ""
+                        ];
+                        
+                        let ansStr = row[5] ? row[5].toString().trim().toUpperCase() : "A";
+                        let correctIndex = 0;
+                        if(ansStr === 'B') correctIndex = 1;
+                        if(ansStr === 'C') correctIndex = 2;
+                        if(ansStr === 'D') correctIndex = 3;
+
+                        newQuestions.push({
+                            id: i, content: content, options: options, correctAnswerIndex: correctIndex
+                        });
+                    }
+
+                    if(newQuestions.length > 0) {
+                        statusEl.textContent = "Đang lưu...";
+                        
+                        // Cập nhật lên Firebase (Nếu có)
+                        if (db) {
+                            try {
+                                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'questionBank');
+                                await setDoc(docRef, { questions: newQuestions, updatedAt: Date.now() });
+                            } catch (err) {}
+                        }
+                        // Lưu Local để chạy Offline
+                        localStorage.setItem('thidaisu_questions', JSON.stringify(newQuestions));
+                        
+                        statusEl.textContent = `Thành công! Tải ${newQuestions.length} câu.`;
+                        statusEl.className = "text-xs font-bold text-green-600";
+                        
+                        questionsData = newQuestions;
+                        TOTAL_QUESTIONS = questionsData.length;
+                        gameState.answers = new Array(TOTAL_QUESTIONS).fill(null);
+                        gameState.marked = new Array(TOTAL_QUESTIONS).fill(false);
+                        const totalInfoEl = document.getElementById('questionCountDisplay');
+                        if(totalInfoEl) totalInfoEl.textContent = `${TOTAL_QUESTIONS} câu`;
+                    } else {
+                        statusEl.textContent = "Lỗi: File rỗng.";
+                        statusEl.className = "text-xs font-bold text-red-600";
+                    }
+                } catch(error) {
+                    statusEl.textContent = "Lỗi đọc file Excel.";
+                    statusEl.className = "text-xs font-bold text-red-600";
+                }
+                e.target.value = '';
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function showAdminLogin() {
+            UI.admin.sectionStudent.classList.add('opacity-0', '-translate-x-full');
+            setTimeout(() => {
+                UI.admin.sectionStudent.classList.add('hidden');
+                UI.admin.sectionAdmin.classList.remove('hidden');
+                void UI.admin.sectionAdmin.offsetWidth;
+                UI.admin.sectionAdmin.classList.remove('translate-x-full');
+                UI.admin.sectionAdmin.classList.add('translate-x-0');
+            }, 300);
+        }
+
+        function showStudentLogin() {
+            UI.admin.sectionAdmin.classList.remove('translate-x-0');
+            UI.admin.sectionAdmin.classList.add('translate-x-full');
+            setTimeout(() => {
+                UI.admin.sectionAdmin.classList.add('hidden');
+                UI.admin.sectionStudent.classList.remove('hidden');
+                void UI.admin.sectionStudent.offsetWidth;
+                UI.admin.sectionStudent.classList.remove('-translate-x-full', 'opacity-0');
+            }, 300);
+        }
+
+        async function handleAdminLogin(e) {
+            e.preventDefault();
+            const user = document.getElementById('adminUsername').value.trim();
+            const pass = document.getElementById('adminPassword').value.trim();
+            
+            if(user === "admin" && pass === "admin123") {
+                UI.screens.login.classList.add('hidden');
+                UI.screens.admin.classList.remove('hidden');
+                document.body.classList.remove('h-[100dvh]'); 
+                document.getElementById('adminUsername').value = '';
+                document.getElementById('adminPassword').value = '';
+                await loadAdminData();
+            } else {
+                alert("Tài khoản/Mật khẩu sai!");
+            }
+        }
+
+        async function loadAdminData() {
+            // Lấy trực tiếp phần tử mỗi khi gọi hàm để tránh lỗi null do cache
+            const tbody = document.getElementById('adminTableBody');
+            
+            if (!tbody) {
+                alert("Đang tải giao diện cũ. Vui lòng nhấn Ctrl + F5 để làm mới trang web!");
+                console.error("LỖI: Không tìm thấy adminTableBody. Cấu trúc HTML bị thiếu hoặc trình duyệt đang lưu cache.");
+                return;
+            }
+            
+            tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Đang tải dữ liệu...</td></tr>';
+            
+            try {
+                let results = [];
+                if(db) {
+                    const resultsRef = collection(db, 'artifacts', appId, 'public', 'data', 'exam_results');
+                    const q = query(resultsRef);
+                    const querySnapshot = await getDocs(q);
+                    querySnapshot.forEach((doc) => results.push(doc.data()));
+                } else {
+                    const localRes = localStorage.getItem('thidaisu_results');
+                    if (localRes) results = JSON.parse(localRes);
+                }
+
+                results.sort((a, b) => b.timestamp - a.timestamp);
+                UI.admin.totalSpan.textContent = results.length;
+                tbody.innerHTML = '';
+
+                if(results.length === 0) {
+                     tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center text-gray-500">Chưa có bài nộp nào.</td></tr>';
+                     return;
+                }
+
+                results.forEach(res => {
+                    const date = new Date(res.timestamp);
+                    const dateStr = date.toLocaleString('vi-VN', { hour: '2-digit', minute:'2-digit', day:'2-digit', month:'2-digit', year:'numeric' });
+                    const timeTaken = res.timeTakenSeconds || 0;
+                    const min = Math.floor(timeTaken / 60);
+                    const sec = timeTaken % 60;
+                    const timeTakenStr = `${min} phút ${sec} giây`;
+                    
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-gray-50 transition';
+                    tr.innerHTML = `
+                        <td class="p-4 border-b text-sm text-gray-600">${dateStr}</td>
+                        <td class="p-4 border-b text-sm font-medium text-gray-900">${res.userName}</td>
+                        <td class="p-4 border-b text-sm text-gray-600">${res.empId}</td>
+                        <td class="p-4 border-b text-sm text-center text-gray-700">${timeTakenStr}</td>
+                        <td class="p-4 border-b text-sm text-center font-medium">${res.correctCount}/${res.totalQuestions || TOTAL_QUESTIONS}</td>
+                        <td class="p-4 border-b text-sm text-center font-bold text-brand">${res.score.toFixed(1)}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
+            } catch (error) {
+                tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-red-500">Lỗi không thể tải dữ liệu (Offline). Tuy nhiên, kết quả Google Form vẫn hoạt động.</td></tr>';
+            }
+        }
+
+        function openSidebar() {
+            document.getElementById('rightSidebar').classList.remove('translate-x-full');
+            document.getElementById('sidebarOverlay').classList.remove('hidden');
+        }
+        function closeSidebar() {
+            document.getElementById('rightSidebar').classList.add('translate-x-full');
+            document.getElementById('sidebarOverlay').classList.add('hidden');
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const name = document.getElementById('fullName').value.trim();
+            const empId = document.getElementById('empId').value.trim();
+            if (name && empId) {
+                if(!gameState.userId) gameState.userId = "local_user_" + Date.now();
+                gameState.userInfo = { name, id: empId };
+                document.getElementById('displayUserName').textContent = name;
+                UI.screens.login.classList.add('hidden');
+                UI.screens.exam.classList.remove('hidden');
+                startExam();
+            }
+        }
+
+        function startExam() {
+            renderQuestionGrid();
+            loadQuestion(0);
+            startTimer();
+            updateAnsweredCount();
+        }
+
+        function renderQuestionGrid() {
+            const grid = document.getElementById('questionGrid');
+            grid.innerHTML = '';
+            for (let i = 0; i < TOTAL_QUESTIONS; i++) {
+                const btn = document.createElement('button');
+                btn.className = 'grid-btn';
+                btn.textContent = i + 1;
+                btn.id = `grid-btn-${i}`;
+                btn.onclick = () => loadQuestion(i);
+                grid.appendChild(btn);
+            }
+        }
+
+        function loadQuestion(index) {
+            if (index < 0 || index >= TOTAL_QUESTIONS) return;
+            gameState.currentQuestionIndex = index;
+            const q = questionsData[index];
+            
+            document.getElementById('questionTitle').textContent = `CÂU ${index + 1} / ${TOTAL_QUESTIONS}`;
+            document.getElementById('questionContent').textContent = q.content;
+            
+            const optionsContainer = document.getElementById('optionsContainer');
+            optionsContainer.innerHTML = '';
+            const letters = ['A', 'B', 'C', 'D'];
+            
+            q.options.forEach((optText, optIndex) => {
+                const isSelected = gameState.answers[index] === optIndex;
+                const label = document.createElement('label');
+                label.className = `option-label flex items-start p-3 border rounded-lg cursor-pointer ${isSelected ? 'selected' : 'border-gray-200'}`;
+                
+                const radioInput = document.createElement('div');
+                radioInput.className = 'custom-radio mt-0.5';
+                
+                const input = document.createElement('input');
+                input.type = 'radio';
+                input.name = `question_${index}`;
+                input.value = optIndex;
+                input.checked = isSelected;
+                input.onchange = () => selectOption(index, optIndex, label);
+
+                const mark = document.createElement('span');
+                mark.className = 'radio-mark';
+                
+                radioInput.appendChild(input);
+                radioInput.appendChild(mark);
+                
+                const textDiv = document.createElement('div');
+                textDiv.className = 'flex-1 text-gray-700 leading-snug text-sm sm:text-base';
+                textDiv.innerHTML = `<span class="font-bold mr-1">${letters[optIndex]}.</span> ${optText}`;
+                
+                label.appendChild(radioInput);
+                label.appendChild(textDiv);
+                optionsContainer.appendChild(label);
+            });
+
+            updateGridButtonsUI();
+            
+            document.getElementById('btnPrev').disabled = index === 0;
+            document.getElementById('btnPrev').style.opacity = index === 0 ? '0.5' : '1';
+            document.getElementById('btnNext').disabled = index === TOTAL_QUESTIONS - 1;
+            document.getElementById('btnNext').style.opacity = index === TOTAL_QUESTIONS - 1 ? '0.5' : '1';
+            if (window.innerWidth < 768) closeSidebar();
+        }
+
+        function changeQuestion(step) {
+            const newIndex = gameState.currentQuestionIndex + step;
+            if (newIndex >= 0 && newIndex < TOTAL_QUESTIONS) loadQuestion(newIndex);
+        }
+
+        function selectOption(qIndex, optIndex, selectedLabelElement) {
+            gameState.answers[qIndex] = optIndex;
+            const allLabels = document.getElementById('optionsContainer').querySelectorAll('.option-label');
+            allLabels.forEach(lbl => {
+                lbl.classList.remove('selected', 'border-[#4F46E5]', 'bg-[#EEF2FF]');
+                lbl.classList.add('border-gray-200');
+            });
+            selectedLabelElement.classList.remove('border-gray-200');
+            selectedLabelElement.classList.add('selected');
+            updateGridButtonsUI();
+            updateAnsweredCount();
+        }
+
+        function toggleMarkCurrentQuestion() {
+            const currentIndex = gameState.currentQuestionIndex;
+            gameState.marked[currentIndex] = !gameState.marked[currentIndex];
+            updateGridButtonsUI();
+        }
+
+        function updateGridButtonsUI() {
+            const currentIndex = gameState.currentQuestionIndex;
+            for (let i = 0; i < TOTAL_QUESTIONS; i++) {
+                const btn = document.getElementById(`grid-btn-${i}`);
+                if(!btn) continue;
+                btn.className = 'grid-btn';
+                if (i === currentIndex) btn.classList.add('current');
+                
+                const isAnswered = gameState.answers[i] !== null;
+                const isMarked = gameState.marked[i];
+                if (isAnswered && isMarked) btn.classList.add('answered', 'marked');
+                else if (isAnswered) btn.classList.add('answered');
+                else if (isMarked) btn.classList.add('marked');
+            }
+        }
+
+        function updateAnsweredCount() {
+            const answered = gameState.answers.filter(ans => ans !== null).length;
+            document.getElementById('answeredCountInfo').textContent = `Đã làm: ${answered}/${TOTAL_QUESTIONS}`;
+        }
+
+        function startTimer() {
+            updateTimerDisplay();
+            gameState.timerInterval = setInterval(() => {
+                gameState.timeRemaining--;
+                updateTimerDisplay();
+                if (gameState.timeRemaining <= 0) {
+                    clearInterval(gameState.timerInterval);
+                    autoSubmit();
+                }
+            }, 1000);
+        }
+
+        function updateTimerDisplay() {
+            const m = Math.floor(gameState.timeRemaining / 60).toString().padStart(2, '0');
+            const s = (gameState.timeRemaining % 60).toString().padStart(2, '0');
+            const timeStr = `${m}:${s}`;
+            const timer = document.getElementById('timerDisplay');
+            const mobileTimer = document.getElementById('mobileTimerDisplay');
+            timer.textContent = timeStr;
+            mobileTimer.textContent = timeStr;
+            if (gameState.timeRemaining < 300) { 
+                timer.classList.add('text-red-600'); timer.classList.remove('text-gray-900');
+                mobileTimer.classList.add('text-red-600'); mobileTimer.classList.remove('text-brand');
+            }
+        }
+
+        function requestSubmit() {
+            const answered = gameState.answers.filter(ans => ans !== null).length;
+            const unanswered = TOTAL_QUESTIONS - answered;
+            if (unanswered > 0) {
+                document.getElementById('confirmMsg').innerHTML = `Bạn còn <strong>${unanswered}</strong> câu chưa trả lời. Bạn có chắc chắn muốn nộp bài?`;
+            } else {
+                document.getElementById('confirmMsg').textContent = `Bạn đã trả lời đủ ${TOTAL_QUESTIONS} câu. Xác nhận nộp bài?`;
+            }
+            document.getElementById('confirmModal').classList.remove('hidden');
+        }
+
+        function closeConfirmModal() {
+            if(isSaving) return;
+            document.getElementById('confirmModal').classList.add('hidden');
+        }
+
+        function autoSubmit() {
+            document.getElementById('confirmMsg').textContent = "Đã hết thời gian làm bài. Hệ thống đang tự động nộp bài...";
+            document.getElementById('btnCancelSubmit').classList.add('hidden');
+            document.getElementById('confirmModal').classList.remove('hidden');
+            finishExam();
+        }
+
+        async function finishExam() {
+            if(gameState.isFinished || isSaving) return;
+            isSaving = true;
+            clearInterval(gameState.timerInterval);
+            
+            const btnSubmit = document.getElementById('btnConfirmSubmit');
+            const spinner = document.getElementById('submitSpinner');
+            btnSubmit.disabled = true;
+            btnSubmit.classList.add('opacity-80');
+            spinner.classList.remove('hidden');
+            
+            let correctCount = 0;
+            for (let i = 0; i < TOTAL_QUESTIONS; i++) {
+                if (gameState.answers[i] === questionsData[i].correctAnswerIndex) {
+                    correctCount++;
+                }
+            }
+            const score = (correctCount / TOTAL_QUESTIONS) * 10;
+            const timeTaken = (EXAM_TIME_MINUTES * 60) - gameState.timeRemaining;
+            const minTaken = Math.floor(timeTaken / 60);
+            const secTaken = timeTaken % 60;
+
+            // Gửi dữ liệu về Google Form
+            if (GOOGLE_FORM_CONFIG.enabled) {
+                try {
+                    const formData = new FormData();
+                    formData.append(GOOGLE_FORM_CONFIG.entries.userName, gameState.userInfo.name);
+                    formData.append(GOOGLE_FORM_CONFIG.entries.empId, gameState.userInfo.id);
+                    formData.append(GOOGLE_FORM_CONFIG.entries.score, score.toFixed(1));
+                    formData.append(GOOGLE_FORM_CONFIG.entries.correctCount, `${correctCount} / ${TOTAL_QUESTIONS}`);
+                    formData.append(GOOGLE_FORM_CONFIG.entries.timeTaken, `${minTaken} phút ${secTaken} giây`);
+
+                    fetch(GOOGLE_FORM_CONFIG.formUrl, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        body: formData
+                    }).catch(e => console.log("Form request sent."));
+                } catch(e) { console.error("Form send error"); }
+            }
+
+            // Lưu Local Storage (để backup)
+            try {
+                const resObj = {
+                    userId: gameState.userId,
+                    userName: gameState.userInfo.name,
+                    empId: gameState.userInfo.id,
+                    score: score,
+                    correctCount: correctCount,
+                    totalQuestions: TOTAL_QUESTIONS,
+                    timeTakenSeconds: timeTaken,
+                    timestamp: Date.now() 
+                };
+                let allLocalRes = JSON.parse(localStorage.getItem('thidaisu_results') || '[]');
+                allLocalRes.push(resObj);
+                localStorage.setItem('thidaisu_results', JSON.stringify(allLocalRes));
+
+                // Lưu lên Firebase nếu có
+                if(db) {
+                    const resultsRef = collection(db, 'artifacts', appId, 'public', 'data', 'exam_results');
+                    await addDoc(resultsRef, resObj);
+                }
+            } catch (error) {}
+
+            isSaving = false;
+            gameState.isFinished = true;
+            document.getElementById('confirmModal').classList.add('hidden');
+            
+            document.getElementById('resultUserInfo').textContent = `Thí sinh: ${gameState.userInfo.name} - Mã: ${gameState.userInfo.id}`;
+            document.getElementById('correctCountDisplay').textContent = `${correctCount} / ${TOTAL_QUESTIONS}`;
+            document.getElementById('scoreDisplay').textContent = score.toFixed(1);
+            document.getElementById('timeTakenDisplay').textContent = `${minTaken} phút ${secTaken} giây`;
+            
+            UI.screens.exam.classList.add('hidden');
+            UI.screens.result.classList.remove('hidden');
+            document.body.classList.remove('bg-[#F8F9FA]');
+            document.body.classList.add('bg-gray-100');
+        }
+
+        function exportResultToCSV() {
+            if(!gameState.isFinished) return;
+            const timeTakenInSeconds = (EXAM_TIME_MINUTES * 60) - gameState.timeRemaining;
+            const minutesTaken = Math.floor(timeTakenInSeconds / 60);
+            const secondsTaken = timeTakenInSeconds % 60;
+            
+            let correctCount = 0;
+            const letters = ['A', 'B', 'C', 'D'];
+            let detailRows = [];
+
+            for (let i = 0; i < TOTAL_QUESTIONS; i++) {
+                const userAnsIdx = gameState.answers[i];
+                const correctAnsIdx = questionsData[i].correctAnswerIndex;
+                const isCorrect = userAnsIdx === correctAnsIdx;
+                if (isCorrect) correctCount++;
+
+                const userAnsLetter = userAnsIdx !== null ? letters[userAnsIdx] : 'Chưa chọn';
+                const correctAnsLetter = letters[correctAnsIdx];
+                const statusStr = isCorrect ? 'Đúng' : (userAnsIdx === null ? 'Bỏ qua' : 'Sai');
+                detailRows.push(`${i + 1},${userAnsLetter},${correctAnsLetter},${statusStr}`);
+            }
+
+            const score = ((correctCount / TOTAL_QUESTIONS) * 10).toFixed(2);
+            const dateStr = new Date().toLocaleString('vi-VN');
+
+            let csvContent = "\uFEFF"; 
+            csvContent += "THÔNG TIN KẾT QUẢ THI TRẮC NGHIỆM\n\n";
+            csvContent += `Họ và tên:,${gameState.userInfo.name}\n`;
+            csvContent += `Mã NV:,${gameState.userInfo.id}\n`;
+            csvContent += `Nộp bài:,${dateStr}\n`;
+            csvContent += `Thời gian làm:,${minutesTaken} phút ${secondsTaken} giây\n`;
+            csvContent += `Số câu đúng:,${correctCount} / ${TOTAL_QUESTIONS}\n`;
+            csvContent += `Điểm số:,${score} / 10\n\n`;
+            csvContent += "CHI TIẾT BÀI LÀM\n";
+            csvContent += "Câu số,Đã chọn,Đáp án,Kết quả\n";
+            csvContent += detailRows.join("\n");
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `KetQua_${gameState.userInfo.name}_${gameState.userInfo.id}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // --- XEM LẠI BÀI LÀM ---
+        function showReviewScreen() {
+            UI.screens.result.classList.add('hidden');
+            UI.screens.review.classList.remove('hidden');
+
+            const container = document.getElementById('reviewContainer');
+            // Đã sửa lỗi: Kiểm tra số lượng phần tử con thay vì kiểm tra text để không bị vướng thẻ comment HTML
+            if (container.children.length > 0) return; 
+
+            let html = '';
+            const letters = ['A', 'B', 'C', 'D'];
+
+            questionsData.forEach((q, qIndex) => {
+                const userAnsIdx = gameState.answers[qIndex];
+                const correctAnsIdx = q.correctAnswerIndex;
+                const isCorrect = userAnsIdx === correctAnsIdx;
+                const isSkipped = userAnsIdx === null;
+
+                let statusBadge = '';
+                if (isCorrect) {
+                    statusBadge = '<span class="bg-green-100 text-green-800 text-xs font-bold px-2.5 py-1 rounded border border-green-200 whitespace-nowrap">ĐÚNG</span>';
+                } else if (isSkipped) {
+                    statusBadge = '<span class="bg-gray-100 text-gray-800 text-xs font-bold px-2.5 py-1 rounded border border-gray-200 whitespace-nowrap">BỎ QUA</span>';
+                } else {
+                    statusBadge = '<span class="bg-red-100 text-red-800 text-xs font-bold px-2.5 py-1 rounded border border-red-200 whitespace-nowrap">SAI</span>';
+                }
+
+                let optionsHtml = '';
+                q.options.forEach((optText, optIndex) => {
+                    let optClass = 'p-3 border rounded-lg text-sm sm:text-base border-gray-200 text-gray-700';
+                    let iconHtml = '';
+                    
+                    if (optIndex === correctAnsIdx) {
+                        optClass = 'p-3 border-2 rounded-lg text-sm sm:text-base border-green-500 bg-green-50 font-medium text-green-800 flex justify-between items-center';
+                        iconHtml = '<svg class="w-5 h-5 text-green-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
+                    } else if (optIndex === userAnsIdx && !isCorrect) {
+                        optClass = 'p-3 border-2 rounded-lg text-sm sm:text-base border-red-400 bg-red-50 text-red-700 flex justify-between items-center line-through decoration-red-400';
+                        iconHtml = '<svg class="w-5 h-5 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>';
+                    }
+
+                    optionsHtml += `
+                        <div class="${optClass}">
+                            <div><span class="font-bold mr-1">${letters[optIndex]}.</span> ${optText}</div>
+                            ${iconHtml}
+                        </div>
+                    `;
+                });
+
+                html += `
+                    <div class="border border-gray-200 rounded-lg p-4 sm:p-5 bg-gray-50">
+                        <div class="flex justify-between items-start mb-3 gap-3">
+                            <h3 class="font-bold text-gray-800 text-[15px] sm:text-base">Câu ${qIndex + 1}: <span class="font-normal">${q.content}</span></h3>
+                            <div class="shrink-0 mt-0.5">${statusBadge}</div>
+                        </div>
+                        <div class="space-y-2">
+                            ${optionsHtml}
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        function hideReviewScreen() {
+            UI.screens.review.classList.add('hidden');
+            UI.screens.result.classList.remove('hidden');
+        }
+
+        // --- MOCK DATA GENERATOR TẠO DỮ LIỆU DỰ PHÒNG ---
+        function generateMockData() {
+            const data = [];
+            data.push({
+                id: 1,
+                content: "Hệ thống đang chạy bộ câu hỏi dự phòng do không đọc được dữ liệu chính.",
+                options: ["Đáp án A", "Đáp án B", "Đáp án C", "Đáp án D"],
+                correctAnswerIndex: 0 
+            });
+            for (let i = 2; i <= TOTAL_QUESTIONS; i++) {
+                data.push({
+                    id: i,
+                    content: `Câu hỏi mẫu số ${i} về nghiệp vụ ngân hàng.`,
+                    options: [`Đáp án A câu ${i}`, `Đáp án B câu ${i}`, `Đáp án C câu ${i}`, `Đáp án D câu ${i}`],
+                    correctAnswerIndex: Math.floor(Math.random() * 4)
+                });
+            }
+            return data;
+        }
+
+        // --- LỆNH KHỞI CHẠY ỨNG DỤNG BỊ THIẾU ---
+        window.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>
 
